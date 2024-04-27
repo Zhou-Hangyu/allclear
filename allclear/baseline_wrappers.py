@@ -4,8 +4,8 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
+# sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
 sys.path.append("/home/hz477/declousion/baselines/UnCRtainTS/model")
-
 
 # Import model classes
 from baselines.UnCRtainTS.model.src.model_utils import get_model, load_checkpoint

@@ -2,14 +2,15 @@ import argparse
 import logging
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 import torch.nn.functional as F
 import sys
 
 sys.path.append("/home/hz477/declousion/baselines/UnCRtainTS/model")
 
-# Import model classes
 from allclear import CRDataset
-from allclear.baselines import UnCRtainTS, LeastCloudy, Mosaicing
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing
+from baselines.UnCRtainTS.model.parse_args import create_parser
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -50,7 +51,7 @@ class BenchmarkEngine:
         metrics = Metrics()
         outputs_all = []
         targets_all = []
-        for data in self.data_loader:
+        for data in tqdm(self.data_loader, desc="Running Benchmark"):
             # print(data["timestamps"])
             # images, batch_positions = data["input_images"].to(self.device), data["timestamps"].float().mean(dim=0)[None].to(self.device)
             targets = data["target"].to(self.device)
@@ -85,6 +86,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Benchmarking Engine for Models and Datasets")
     parser.add_argument("--baseline-base-path", type=str, required=True, help="Path to the baseline codebase")
     parser.add_argument("--data-path", type=str, required=True, help="Path to dataset")
+    parser.add_argument("--metadata-path", type=str, required=True, help="Path to metadata file")
     parser.add_argument("--model-name", type=str, required=True, help="Model to use for benchmarking")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for data loading")
     parser.add_argument("--num-workers", type=int, default=4, help="Number of workers for DataLoader")
@@ -92,21 +94,36 @@ def parse_arguments():
     parser.add_argument("--device", type=str, required=True, help="Device to run the model on")
     parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
-    parser.add_argument("--model-checkpoint", type=str, required=True, help="Path to the model checkpoint")
-    parser.add_argument("--input-dim", type=int, required=True, help="Input dimension for the model")
-    parser.add_argument("--output-dim", type=int, required=True, help="Output dimension for the model")
-    parser.add_argument("--selected-rois", type=str, nargs="+", required=True, help="Selected ROIs for benchmarking")
+    parser.add_argument("--selected-rois", type=int, nargs="+", required=True, help="Selected ROIs for benchmarking")
     parser.add_argument("--time-span", type=int, default=3, help="Time span for the dataset")
     parser.add_argument("--cloud-percentage-range", type=int, nargs=2, default=[20, 30], help="Cloud percentage range for the dataset")
+    parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init", help="Path to save the experiment results")
+    parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
 
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
-    uc_args.add_argument()
+    uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
+    uc_args.add_argument("--uc-root1", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 1 for UnCRtainTS")
+    uc_args.add_argument("--uc-root2", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 2 for UnCRtainTS")
+    uc_args.add_argument("--uc-root3", type=str, default="/share/hariharan/cloud_removal/SEN12MSCR", help="Root 3 for UnCRtainTS")
+    uc_args.add_argument("--uc-weight-folder", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/results", help="Folder containing weights for UnCRtainTS")
 
     args = parser.parse_args()
     return args
 
 
 if __name__ == "__main__":
-    args = parse_arguments()
+    benchmark_args = parse_arguments()
+    if benchmark_args.model_name == "uncrtaints":
+        uc_args = create_parser(mode="test").parse_args([
+            '--experiment_name', benchmark_args.uc_exp_name,
+            '--root1', benchmark_args.uc_root1,
+            '--root2', benchmark_args.uc_root2,
+            '--root3', benchmark_args.uc_root3,
+            '--weight_folder', benchmark_args.uc_weight_folder])
+        args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing"]:
+        args = benchmark_args
+    else:
+        raise ValueError(f"Invalid model name: {benchmark_args.model_name}")
     engine = BenchmarkEngine(args)
     engine.run()

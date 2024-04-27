@@ -4,16 +4,13 @@
 
 
 ## Setup
-`AllClear` comes with minimal package requirements. To further facilitate environment setup, you can use the provided
-`benchmark_dependencies.yml` to update your existing conda environment for benchmarking purposes. Please run the following 
-command, replacing `your_env_name` with the name of your conda environment:
+`AllClear` comes with minimal package requirements. It can be easily installed using conda. 
+Please navigate to the root directory of this project and run the following commands:
+
 ```bash
-conda env update -n your_env_name -f benchmark_dependencies.yml
+conda build .
+conda install --use-local allclear
 ```
-This will install any packages that are missing from your environment but required by AllClear, while preserving the rest 
-of your environment's setup.
-
-
 
 This repository contains multiple baseline repo as submodules. To include them in the project, run the following command:
 
@@ -21,7 +18,9 @@ This repository contains multiple baseline repo as submodules. To include them i
 git submodule update --init --recursive
 ```
 
+## License
 
+This project is licensed under the [MIT License](LICENSE).
 
 
 ## Internal Notes (for developers)

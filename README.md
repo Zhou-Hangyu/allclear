@@ -4,12 +4,11 @@
 
 
 ## Setup
-`AllClear` comes with minimal package requirements. It can be easily installed using conda. 
+`AllClear` comes with minimal package requirements. It can be easily installed using pip. 
 Please navigate to the root directory of this project and run the following commands:
 
 ```bash
-conda build .
-conda install --use-local allclear
+pip install -e .
 ```
 
 This repository contains multiple baseline repo as submodules. To include them in the project, run the following command:

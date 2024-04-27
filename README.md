@@ -4,7 +4,7 @@
 `AllClear` comes with minimal package requirements. To further facilitate environment setup, you can use the provided
 `benchmark_dependencies.yml` to update your existing conda environment for benchmarking purposes. Please run the following 
 command, replacing `your_env_name` with the name of your conda environment:
-```angular2html
+```bash
 conda env update -n your_env_name -f benchmark_dependencies.yml
 ```
 This will install any packages that are missing from your environment but required by AllClear, while preserving the rest 

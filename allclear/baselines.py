@@ -78,10 +78,8 @@ class UnCRtainTS(BaseModel):
             for key, val in vars(self.args).items():
                 if key in no_overwrite:
                     conf_dict[key] = val
-            print(conf_dict)
             t_args.__dict__.update(conf_dict)
-            print(t_args)
-            config = parser.parse_args(namespace=t_args)  # bug
+            config, unknown = parser.parse_known_args(namespace=t_args)  # avoid error for unknown arguments (e.g., -f from jupyter notebook)
         config = str2list(config, ["encoder_widths", "decoder_widths", "out_conv"])
         return config
 

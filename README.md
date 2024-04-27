@@ -17,6 +17,28 @@ This repository contains multiple baseline repo as submodules. To include them i
 git submodule update --init --recursive
 ```
 
+
+## Benchmark Usage
+
+This section provides instructions on how to use the benchmark with the `UnCRtainTS` model as an example.
+
+1. First, set up the environment for `UnCRtainTS`. Visit the [UnCRtainTS GitHub page](https://github.com/PatrickTUM/UnCRtainTS) and follow the instructions there to create their conda environment.
+
+2. After setting up the `UnCRtainTS` environment, navigate to the root directory of this project and install our package using pip:
+
+    ```bash
+    pip install -e .
+    ```
+
+3. To run the benchmark and see some results, execute the `run_benchmark.sh` script located in the `demos` directory:
+
+    ```bash
+    bash demos/run_benchmark.sh
+    ```
+
+This script will run the benchmark using the `UnCRtainTS` model and display some results. You can modify the script to use different models or parameters.
+
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

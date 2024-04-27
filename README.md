@@ -1,5 +1,8 @@
 # allclear
 
+`AllClear` is a comprehensive dataset/benchmark for cloud detection and removal. 
+
+
 ## Setup
 `AllClear` comes with minimal package requirements. To further facilitate environment setup, you can use the provided
 `benchmark_dependencies.yml` to update your existing conda environment for benchmarking purposes. Please run the following 

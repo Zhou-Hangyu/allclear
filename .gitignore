@@ -2,5 +2,6 @@ allclear/baselines/DiffCR
 allclear/baselines/UnCRtainTS
 
 data
+experimental_scripts
 
 .idea

@@ -24,4 +24,3 @@ python $SCRIPT_PATH \
   --input-dim $INPUT_DIM \
   --output-dim $OUTPUT_DIM \
   --selected-rois roi40
-

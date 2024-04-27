@@ -9,7 +9,7 @@ import os, json, datetime, sys
 sys.path.append("/home/hz477/declousion/baselines/UnCRtainTS/model")
 
 # Import model classes
-from dataloader import CRDataset
+from allclear import CRDataset
 from src.baselines import UnCRtainTS, LeastCloudy, Mosaicing
 
 # Logger setup

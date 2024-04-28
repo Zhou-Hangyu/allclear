@@ -55,13 +55,14 @@ class CRDataset(Dataset):
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
-    def __init__(self, dataset_csv, patch_metadata_csv, selected_rois, time_span, cloud_percentage_range=None):
+    def __init__(self, dataset_csv, patch_metadata_csv, selected_rois, time_span, mode, cloud_percentage_range=None):
         self.data = pd.read_csv(dataset_csv)
         self.data = self.data[self.data["ROI ID"].isin(selected_rois)]
         # self.data = self.data[self.data["Target"].split("_")[0][3:].isin(selected_rois)]
         self.metadata = pd.read_csv(patch_metadata_csv)
         self.time_span = time_span
 
+        self.mode = mode
         if cloud_percentage_range:
             # min_cloud, max_cloud = cloud_percentage_range
             # self.metadata = self.metadata[
@@ -83,7 +84,11 @@ class CRDataset(Dataset):
         input_metadatas = [self.metadata[self.metadata["uid"] == input_id].iloc[0] for input_id in input_ids]
 
         # Load the target image and the corresponding mask.
-        with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+        if self.mode == "toa":
+            target_msi_path = target_metadata["ROI File Path"].replace("s2", "s2_toa")
+        elif self.mode == "sr":
+            target_msi_path = target_metadata["ROI File Path"]
+        with rs.open(target_msi_path) as src:
             target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
         target_image = torch.from_numpy(target_image).float()
 
@@ -102,7 +107,11 @@ class CRDataset(Dataset):
         # Load the input images and their corresponding masks.
         for input_metadata in input_metadatas:
             # Load input image.
-            with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+            if self.mode == "toa":
+                input_msi_path = input_metadata["ROI File Path"].replace("s2", "s2_toa")
+            elif self.mode == "sr":
+                input_msi_path = input_metadata["ROI File Path"]
+            with rs.open(input_msi_path) as src:
                 image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
             image = torch.from_numpy(image).float()
             input_images.append(image)

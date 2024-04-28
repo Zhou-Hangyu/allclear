@@ -195,8 +195,6 @@ class Simple3DUnet(BaseModel):
         super().__init__(args)
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
-        self.S1_LAUNCH = to_date("2014-04-03")
-        self.S2_BANDS = 13
 
         self.config = self.get_config()  # bug
         self.model = self.get_model().to(self.device)
@@ -225,7 +223,7 @@ class Simple3DUnet(BaseModel):
             norm_num_groups=self.config.norm_num_groups,  # the number of groups for normalization
         )
 
-        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_10.pt"
+        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_6.pt"
         model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
         model.eval()
 
@@ -248,7 +246,7 @@ class Simple3DUnet(BaseModel):
 
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, 1:4]
         inputs["cloud_masks"] = inputs["cloud_masks"].to(self.device)
         return inputs
     
@@ -283,20 +281,40 @@ class Simple3DUnet(BaseModel):
         # Input transformation
         input_imgs = inputs["input_images"] * 2 - 1
         input_imgs = input_imgs.permute(0, 2, 1, 3, 4)
-        input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12,0,0]]
-        input_imgs[:, -2:] = 0
+        input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12, 12, 12]]
+        # input_imgs[:, -2:] = -1
         input_imgs = input_imgs.to(self.device)
 
+        input_buffer = torch.ones((BS, 12, 12, H, W)).to(self.device) * -1
+        input_buffer[:, :, :3] = input_imgs
+        input_buffer[:, :, 3:6] = input_imgs
+        input_buffer[:, :, 6:9] = input_imgs
+        input_buffer[:, :, 9:12] = input_imgs
+
         # Update day counts and day token
-        day_counts = self.compute_day_differences(inputs["timestamps"])
+        # day_counts = self.compute_day_differences(inputs["timestamps"])
+        day_counts = torch.arange(6).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
+
         self.update_model_position_token(self.model, day_counts)
-
         emb = torch.zeros((self.args.batch_size, 2, 1024)).to(self.args.device)
-
         buffer = torch.zeros_like(inputs["target"])
+
         with torch.no_grad():
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                prediction = self.model(input_imgs, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-        buffer = inputs["input_images"][:, T//2]
-        buffer[:,1:4] = torch.flip(prediction[:, :, T//2], dims=[1])
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                prediction = self.model(input_buffer, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
+        # buffer = inputs["input_images"][:, T//2]
+        prediction = torch.flip(prediction[:, :, 3], dims=[1])
+
+        #save prediction and input_imgs, and targets results in numpy format
+        # self.args.res_dir = "/share/hariharan/ck696/Decloud/UNet/results/test_buffer"
+        # import numpy as np
+        # np.save(f"{self.args.res_dir}/prediction.npy", prediction.cpu().numpy())
+        # np.save(f"{self.args.res_dir}/input_imgs.npy", input_imgs.cpu().numpy())
+        # np.save(f"{self.args.res_dir}/input_buffer.npy", input_buffer.cpu().numpy())
+        # np.save(f"{self.args.res_dir}/targets.npy", inputs["target"].cpu().numpy())
+        # # print min max of prediction and input_buffer
+        # print(f"Prediction min: {prediction.min()}, max: {prediction.max()}")
+        # print(f"Input buffer min: {input_buffer.min()}, max: {input_buffer.max()}")
+        # assert 0 == 1
+
         return  {"output": prediction}

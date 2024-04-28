@@ -191,3 +191,7 @@ class Mosaicing(BaseModel):
         mosaiced_img[no_clear_views] = 0.5
 
         return mosaiced_img
+
+
+
+This is the tail.

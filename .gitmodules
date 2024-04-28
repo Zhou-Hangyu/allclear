@@ -4,3 +4,6 @@
 [submodule "baselines/U-TILISE"]
 	path = baselines/U-TILISE
 	url = https://github.com/prs-eth/U-TILISE.git
+[submodule "baselines/DiffCR"]
+	path = baselines/DiffCR
+	url = https://github.com/Zhou-Hangyu/DiffCR.git

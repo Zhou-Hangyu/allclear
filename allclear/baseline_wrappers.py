@@ -4,7 +4,7 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
+sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS")
 
 class BaseModel(ABC):
     def __init__(self, args):
@@ -35,7 +35,7 @@ class BaseModel(ABC):
 class UnCRtainTS(BaseModel):
     def __init__(self, args):
         super().__init__(args)
-        from baselines.UnCRtainTS.model.src.model_utils import get_model, load_checkpoint
+        from model.src.model_utils import get_model, load_checkpoint
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
         self.S1_LAUNCH = to_date("2014-04-03")

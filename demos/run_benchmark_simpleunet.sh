@@ -11,6 +11,8 @@ MODEL_NAME="simpleunet"
 BATCH_SIZE=2
 NUM_WORKERS=2
 DEVICE="cuda:0"
+EVAL_MODE="sr"
+
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
 # SELECTED_ROIS='0 1 14 29'
 SELECTED_ROIS="29"
@@ -27,4 +29,5 @@ python $SCRIPT_PATH \
   --device $DEVICE \
   --selected-rois $SELECTED_ROIS \
   --experiment-output-path $EXP_OUTPUT_PATH \
-  --save-plots
+  --save-plots \
+  --eval-mode $EVAL_MODE

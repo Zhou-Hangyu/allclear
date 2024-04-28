@@ -369,6 +369,7 @@ class BasicTransformerBlock(nn.Module):
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
+            assert hidden_states.shape == attn_output.shape, f"hidden_states.shape: {hidden_states.shape} != attn_output.shape: {attn_output.shape}"
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
@@ -426,8 +427,8 @@ class SinusoidalPositionalEmbedding_CustomToken(nn.Module):
         
         position = self.position.reshape(pbs, 1, num_frames).expand(-1, xbs//pbs, -1).reshape(-1, num_frames).long()
 
-        assert x.shape[0] == position.shape[0]
-        assert x.shape[1] == position.shape[1]
+        assert x.shape[0] == position.shape[0], f"x.shape: {x.shape} != position.shape: {position.shape}"
+        assert x.shape[1] == position.shape[1], f"x.shape: {x.shape} != position.shape: {position.shape}"
 
 
         pe = self.pe[:, position.data]        

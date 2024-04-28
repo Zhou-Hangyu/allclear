@@ -247,14 +247,9 @@ class Simple3DUnet(BaseModel):
 
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-<<<<<<< HEAD
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, 1:4]
-        inputs["cloud_masks"] = inputs["cloud_masks"].to(self.device)
-=======
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
         inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
         inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
->>>>>>> e696019ed3c3691acfa033c368b78a9948cf7b95
         return inputs
     
     def compute_day_differences(self, timestamps):
@@ -289,18 +284,27 @@ class Simple3DUnet(BaseModel):
         input_imgs = inputs["input_images"] * 2 - 1
         input_imgs = input_imgs.permute(0, 2, 1, 3, 4)
         input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12, 12, 12]]
-        # input_imgs[:, -2:] = -1
+        input_imgs[:, -2:] = -1
         input_imgs = input_imgs.to(self.device)
 
-        input_buffer = torch.ones((BS, 12, 12, H, W)).to(self.device) * -1
-        input_buffer[:, :, :3] = input_imgs
-        input_buffer[:, :, 3:6] = input_imgs
-        input_buffer[:, :, 6:9] = input_imgs
-        input_buffer[:, :, 9:12] = input_imgs
+        length = 12
 
-        # Update day counts and day token
-        # day_counts = self.compute_day_differences(inputs["timestamps"])
-        day_counts = torch.arange(6).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
+        if length == 12:
+            input_buffer = torch.ones((BS, 12, length, H, W)).to(self.device) * -1
+            input_buffer[:, :, :3] = input_imgs
+
+            # Update day counts and day token
+            # day_counts = self.compute_day_differences(inputs["timestamps"])
+            day_counts = torch.arange(length).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
+
+        elif length == 6:
+            input_buffer = torch.ones((BS, 12, length, H, W)).to(self.device) * -1
+            input_buffer[:, :, :3] = input_imgs
+            # input_buffer[:, :, 3:6] = input_imgs
+
+            # Update day counts and day token
+            # day_counts = self.compute_day_differences(inputs["timestamps"])
+            day_counts = torch.arange(length).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
 
         self.update_model_position_token(self.model, day_counts)
         emb = torch.zeros((self.args.batch_size, 2, 1024)).to(self.args.device)
@@ -312,7 +316,7 @@ class Simple3DUnet(BaseModel):
         # buffer = inputs["input_images"][:, T//2]
         prediction = torch.flip(prediction[:, :, 3], dims=[1])
 
-        #save prediction and input_imgs, and targets results in numpy format
+        # # save prediction and input_imgs, and targets results in numpy format
         # self.args.res_dir = "/share/hariharan/ck696/Decloud/UNet/results/test_buffer"
         # import numpy as np
         # np.save(f"{self.args.res_dir}/prediction.npy", prediction.cpu().numpy())

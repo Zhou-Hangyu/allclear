@@ -6,6 +6,15 @@ import torch
 
 sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS")
 
+<<<<<<< HEAD
+=======
+It's the head.
+
+Not hello workd
+
+I wonna drink some water I wonna drink the wine
+
+>>>>>>> 727a49bafa4ccfd9fcf78064ee14d2ccf8fd8f97
 class BaseModel(ABC):
     def __init__(self, args):
         self.args = args

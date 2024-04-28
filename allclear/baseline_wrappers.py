@@ -224,7 +224,7 @@ class Simple3DUnet(BaseModel):
             norm_num_groups=self.config.norm_num_groups,  # the number of groups for normalization
         )
 
-        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_6.pt"
+        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_12.pt"
         model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
         model.eval()
 
@@ -287,7 +287,7 @@ class Simple3DUnet(BaseModel):
         input_imgs[:, -2:] = -1
         input_imgs = input_imgs.to(self.device)
 
-        length = 12
+        length = 6
 
         if length == 12:
             input_buffer = torch.ones((BS, 12, length, H, W)).to(self.device) * -1
@@ -303,17 +303,16 @@ class Simple3DUnet(BaseModel):
             # input_buffer[:, :, 3:6] = input_imgs
 
             # Update day counts and day token
-            # day_counts = self.compute_day_differences(inputs["timestamps"])
+            # day_counts = self.compute_day_differences(inputs["timestamps"])'
+            # Day_counts [BS, T]
             day_counts = torch.arange(length).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
 
         self.update_model_position_token(self.model, day_counts)
         emb = torch.zeros((self.args.batch_size, 2, 1024)).to(self.args.device)
-        buffer = torch.zeros_like(inputs["target"])
 
         with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.float16):
                 prediction = self.model(input_buffer, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-        # buffer = inputs["input_images"][:, T//2]
         prediction = torch.flip(prediction[:, :, 3], dims=[1])
 
         # # save prediction and input_imgs, and targets results in numpy format

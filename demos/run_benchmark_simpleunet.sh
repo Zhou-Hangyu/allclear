@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Command: bash demos/run_benchmark.sh
+# Command: bash demos/run_benchmark_simpleunet.sh
 
 
 SCRIPT_PATH="allclear/benchmark.py"

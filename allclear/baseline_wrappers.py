@@ -6,7 +6,6 @@ import torch
 
 sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
 
-hello = "world"
 
 class BaseModel(ABC):
     def __init__(self, args):

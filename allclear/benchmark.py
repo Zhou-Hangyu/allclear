@@ -6,10 +6,12 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import sys
 
-sys.path.append("/home/hz477/declousion/baselines/UnCRtainTS/model")
+
+sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
+sys.path.append("/share/hariharan/ck696/allclear")
 
 from allclear import CRDataset
-from allclear import UnCRtainTS, LeastCloudy, Mosaicing
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet
 from baselines.UnCRtainTS.model.parse_args import create_parser
 
 # Logger setup
@@ -52,6 +54,8 @@ class BenchmarkEngine:
             model = LeastCloudy(self.args)
         elif self.args.model_name == "mosaicing":
             model = Mosaicing(self.args)
+        elif self.args.model_name == "simpleunet":
+            model = Simple3DUnet(self.args)
         else:
             raise ValueError(f"Invalid model name: {self.args.model_name}")
         return model
@@ -72,7 +76,7 @@ class BenchmarkEngine:
                 targets = data["target"].to(self.device)
                 targets_all.append(targets.cpu())
                 outputs = self.model.forward(data)
-                outputs_all.append(outputs[0].cpu())
+                outputs_all.append(outputs["output"].cpu())
                 # save results
                 # for i in range(self.args.batch_size):
                 #     # save results in tif format
@@ -135,7 +139,7 @@ if __name__ == "__main__":
             '--root3', benchmark_args.uc_root3,
             '--weight_folder', benchmark_args.uc_weight_folder])
         args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
-    elif benchmark_args.model_name in ["leastcloudy", "mosaicing"]:
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet"]:
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")

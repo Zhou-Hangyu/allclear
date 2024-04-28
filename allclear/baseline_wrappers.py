@@ -4,7 +4,8 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
+sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/")
+sys.path.append("/share/hariharan/ck696/allclear/baselines/")
 
 class BaseModel(ABC):
     def __init__(self, args):
@@ -128,7 +129,8 @@ class UnCRtainTS(BaseModel):
                 var = out[:, :, self.S2_BANDS :, ...]
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
-        return out, var
+        # return out, var
+        return {"output": out, "variance": var}
 
 
 class LeastCloudy(BaseModel):
@@ -186,3 +188,115 @@ class Mosaicing(BaseModel):
         mosaiced_img[no_clear_views] = 0.5
 
         return mosaiced_img
+    
+
+class Simple3DUnet(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+        # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
+        to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
+        self.S1_LAUNCH = to_date("2014-04-03")
+        self.S2_BANDS = 13
+
+        self.config = self.get_config()  # bug
+        self.model = self.get_model().to(self.device)
+        self.model.eval()
+
+    def get_model_config(self):
+        pass
+
+    def get_model(self):
+
+        from SimpleUnet.diffusers_src import UNet3DConditionModel
+
+        down_block_dict = {"C": "DownBlock3D", "A": "CrossAttnDownBlock3D", "J": "DownBlockJust2D", "R": "CrossAttnDownBlock2D1D"}
+        up_block_dict = {"C": "UpBlock3D", "A": "CrossAttnUpBlock3D", "J": "UpBlockJust2D", "R": "CrossAttnUpBlock2D1D"}
+        down_block_list = [down_block_dict[b] for b in self.config.model_blocks]
+        up_block_list = [up_block_dict[b] for b in self.config.model_blocks][::-1]
+
+        model = UNet3DConditionModel(
+            sample_size=self.config.image_size,  # the target image resolution
+            in_channels=self.config.in_channel,  # the number of input channels, 3 for RGB images
+            out_channels=self.config.out_channel,  # the number of output channels
+            layers_per_block=self.config.LPB,  # how many ResNet layers to use per UNet block
+            block_out_channels=(128, 128, 256, self.config.max_dim, self.config.max_dim, self.config.max_dim, self.config.max_dim)[:len(self.config.model_blocks)],  # the number of output channels for each UNet block
+            down_block_types=down_block_list,  # the down block sequence
+            up_block_types=up_block_list,  # the up block sequence
+            norm_num_groups=self.config.norm_num_groups,  # the number of groups for normalization
+        )
+
+        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_10.pt"
+        model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
+        model.eval()
+
+        return model
+
+    def get_config(self):
+
+        class Args:
+            image_size = 256
+            in_channel = 12
+            out_channel = 3
+            LPB = 1
+            max_dim = 512
+            model_blocks = 'CRRAAA'
+            cross_attention_dim = 32
+            norm_num_groups = 4
+
+        config = Args()
+        return config
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["cloud_masks"] = inputs["cloud_masks"].to(self.device)
+        return inputs
+    
+    def compute_day_differences(self, timestamps):
+        timestamp_diffs = timestamps - timestamps[:, 0:1]
+        day_diffs = (timestamp_diffs / 86400).round().to(self.device)
+        return day_diffs
+    
+    def update_model_position_token(self, model, day_diffs):
+        for p1, p2 in model.named_parameters():
+            if 'position' in p1:
+                p2.data = day_diffs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+
+        """
+        Transformation
+            - input_imgs: (B, T, C, H, W) -> (B, C, T, H, W)
+            - input_imgs: [0,1] -> [-1,1]
+            - input_imgs channels: (B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B10, B11, B12) -> (B4, B3, B2, B5, B6, B7, B8, B8A, B11, B12) + (dummy, dummy), dummy = 0
+        """
+
+        BS, T, _, H, W = inputs["input_images"].shape
+        
+        # Input transformation
+        input_imgs = inputs["input_images"] * 2 - 1
+        input_imgs = input_imgs.permute(0, 2, 1, 3, 4)
+        input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12,0,0]]
+        input_imgs[:, -2:] = 0
+        input_imgs = input_imgs.to(self.device)
+
+        # Update day counts and day token
+        day_counts = self.compute_day_differences(inputs["timestamps"])
+        self.update_model_position_token(self.model, day_counts)
+
+        emb = torch.zeros((self.args.batch_size, 2, 1024)).to(self.args.device)
+
+        buffer = torch.zeros_like(inputs["target"])
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                prediction = self.model(input_imgs, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
+        buffer = inputs["input_images"][:, T//2]
+        buffer[:,1:4] = torch.flip(prediction[:, :, T//2], dims=[1])
+        return  {"output": prediction}

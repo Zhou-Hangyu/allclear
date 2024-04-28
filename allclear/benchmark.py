@@ -7,8 +7,8 @@ import torch.nn.functional as F
 import sys
 
 
-sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
-sys.path.append("/share/hariharan/ck696/allclear")
+sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
+sys.path.append("/share/hariharan/cloud_removal/allclear")
 
 from allclear import CRDataset
 from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet

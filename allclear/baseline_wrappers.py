@@ -4,8 +4,8 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/")
-sys.path.append("/share/hariharan/ck696/allclear/baselines/")
+sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
+sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
 class BaseModel(ABC):
     def __init__(self, args):

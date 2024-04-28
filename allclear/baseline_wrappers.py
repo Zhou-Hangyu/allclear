@@ -23,6 +23,18 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
+    def preprocess(self, inputs):
+        """
+
+        Args:
+            inputs:
+
+        Returns:
+
+        """
+        pass
+
+    @abstractmethod
     def forward(self, inputs):
         pass
 

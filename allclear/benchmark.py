@@ -19,6 +19,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 class Metrics:
     @staticmethod
     def psnr(output, target, max_pixel=1.0):
+        # mse = F.mse_loss(output, target, reduction='none')
         mse = F.mse_loss(output, target)
         return 20 * torch.log10(max_pixel / torch.sqrt(mse))
 
@@ -29,6 +30,9 @@ class Metrics:
     @staticmethod
     def rmse(output, target):
         return torch.sqrt(F.mse_loss(output, target))
+
+    def ssim(self):
+        pass
 
     def evaluate(self, output, target):
         return {"PSNR": self.psnr(output, target), "MAE": self.mae(output, target), "RMSE": self.rmse(output, target)}
@@ -52,12 +56,9 @@ class BenchmarkEngine:
         outputs_all = []
         targets_all = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
-            # print(data["timestamps"])
-            # images, batch_positions = data["input_images"].to(self.device), data["timestamps"].float().mean(dim=0)[None].to(self.device)
             targets = data["target"].to(self.device)
             targets_all.append(targets.cpu())
             with torch.no_grad():
-                # outputs = self.model.forward(images, batch_positions=batch_positions)
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs[0].cpu())
                 # save results
@@ -71,6 +72,7 @@ class BenchmarkEngine:
                     # print(outputs[0].squeeze(0).shape)
                     # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
                     continue
+
 
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0).unsqueeze(1)

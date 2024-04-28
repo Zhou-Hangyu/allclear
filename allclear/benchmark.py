@@ -20,24 +20,37 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 class Metrics:
     @staticmethod
-    def psnr(output, target, max_pixel=1.0):
-        # mse = F.mse_loss(output, target, reduction='none')
+    def psnr(output, target, mask=None, max_pixel=1.0):
         mse = F.mse_loss(output, target)
-        return 20 * torch.log10(max_pixel / torch.sqrt(mse))
+        if mask is not None:
+            mse_mask = torch.mean(F.mse_loss(output, target, reduction='none') * mask)
+            return 20 * torch.log10(max_pixel / torch.sqrt(mse)), 20 * torch.log10(max_pixel / torch.sqrt(mse_mask))
+        else:
+            return 20 * torch.log10(max_pixel / torch.sqrt(mse))
 
     @staticmethod
-    def mae(output, target):
-        return F.l1_loss(output, target)
+    def mae(output, target, mask=None):
+        mae = F.l1_loss(output, target)
+        if mask is not None:
+            mae_mask = torch.mean(F.l1_loss(output, target, reduction='none') * mask)
+            return mae, mae_mask
+        else:
+            return mae
 
     @staticmethod
-    def rmse(output, target):
-        return torch.sqrt(F.mse_loss(output, target))
+    def rmse(output, target, mask=None):
+        mse = F.mse_loss(output, target)
+        if mask is not None:
+            mse_mask = torch.mean(F.mse_loss(output, target, reduction='none') * mask)
+            return torch.sqrt(mse), torch.sqrt(mse_mask)
+        else:
+            return torch.sqrt(mse)
 
     def ssim(self):
         pass
 
-    def evaluate(self, output, target):
-        return {"PSNR": self.psnr(output, target), "MAE": self.mae(output, target), "RMSE": self.rmse(output, target)}
+    def evaluate(self, output, target, mask):
+        return {"PSNR": self.psnr(output, target, mask), "MAE": self.mae(output, target, mask), "RMSE": self.rmse(output, target, mask)}
 
 
 class BenchmarkEngine:
@@ -62,7 +75,7 @@ class BenchmarkEngine:
 
     def setup_data_loader(self):
         dataset = CRDataset(
-            self.args.data_path, self.args.metadata_path, self.args.selected_rois, self.args.time_span, self.args.cloud_percentage_range
+            self.args.data_path, self.args.metadata_path, self.args.selected_rois, self.args.time_span, self.args.eval_mode, self.args.cloud_percentage_range
         )
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
 
@@ -70,11 +83,13 @@ class BenchmarkEngine:
         metrics = Metrics()
         outputs_all = []
         targets_all = []
+        target_masks_all = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
             with torch.no_grad():
                 data = self.model.preprocess(data)
-                targets = data["target"].to(self.device)
-                targets_all.append(targets.cpu())
+                targets_all.append(data["target"].cpu())
+                target_mask = 1 - data["target_cloud_mask"].cpu() # negate to get non-cloud mask
+                target_masks_all.append(target_mask)
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
                 # save results
@@ -92,7 +107,8 @@ class BenchmarkEngine:
 
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0).unsqueeze(1)
-        evaluation_results = metrics.evaluate(outputs, targets)
+        masks = torch.cat(target_masks_all, dim=0).unsqueeze(1)
+        evaluation_results = metrics.evaluate(outputs, targets, masks)
         print(evaluation_results)
         return outputs, targets
 
@@ -117,6 +133,7 @@ def parse_arguments():
     parser.add_argument("--cloud-percentage-range", type=int, nargs=2, default=[20, 30], help="Cloud percentage range for the dataset")
     parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init", help="Path to save the experiment results")
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
+    parser.add_argument("--eval-mode", type=str, default="toa", choices=["toa", "sr"], help="Evaluation mode for the dataset")
 
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")

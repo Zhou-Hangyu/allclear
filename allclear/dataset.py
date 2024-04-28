@@ -55,33 +55,20 @@ class CRDataset(Dataset):
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
-    def __init__(self, dataset_csv, patch_metadata_csv, selected_rois, time_span, cloud_percentage_range=None):
+    def __init__(self, dataset_csv, patch_metadata_csv, selected_rois, time_span, mode, cloud_percentage_range=None):
         self.data = pd.read_csv(dataset_csv)
         self.data = self.data[self.data["ROI ID"].isin(selected_rois)]
         # self.data = self.data[self.data["Target"].split("_")[0][3:].isin(selected_rois)]
         self.metadata = pd.read_csv(patch_metadata_csv)
         self.time_span = time_span
 
+        self.mode = mode
         if cloud_percentage_range:
             # min_cloud, max_cloud = cloud_percentage_range
             # self.metadata = self.metadata[
             #     (self.metadata["Nonzero Cloud Percentage"] >= min_cloud) & (self.metadata["Nonzero Cloud Percentage"] <= max_cloud)
             # ]
             pass
-
-        # self.metadata["capture_date"] = pd.to_datetime(self.metadata["capture_date"])
-        # self.metadata.sort_values("capture_date", inplace=True)
-        # self.metadata["year"] = self.metadata["capture_date"].dt.year
-
-        # Filter the data to ensure necessary columns are not empty
-        # self.metadata = self.metadata.dropna(subset=["ROI File Path", "Nonzero Cloud Percentage" if cloud_percentage_range else None])
-
-        # # Pre-compute least cloudy image per year for each ROI
-        # self.least_cloudy_per_year = {}
-        # grouped = self.metadata.groupby(["ROI ID", "year"])
-        # for name, group in grouped:
-        #     least_cloudy_idx = group["Nonzero Cloud Percentage"].idxmin()
-        #     self.least_cloudy_per_year[name] = self.metadata.loc[least_cloudy_idx]
 
     def __len__(self):
         return len(self.data)
@@ -96,39 +83,45 @@ class CRDataset(Dataset):
         target_metadata = self.metadata[self.metadata["uid"] == target_id].iloc[0]
         input_metadatas = [self.metadata[self.metadata["uid"] == input_id].iloc[0] for input_id in input_ids]
 
-        # Load the target image.
-        with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+        # Load the target image and the corresponding mask.
+        if self.mode == "toa":
+            target_msi_path = target_metadata["ROI File Path"].replace("s2", "s2_toa")
+        elif self.mode == "sr":
+            target_msi_path = target_metadata["ROI File Path"]
+        with rs.open(target_msi_path) as src:
             target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
         target_image = torch.from_numpy(target_image).float()
 
+        with rs.open(target_metadata["Shadow Cloud File Path"]) as src:
+            target_cloud_mask = src.read(2, window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+            target_shadow_mask = src.read(4, window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+        target_cloud_mask = torch.from_numpy(target_cloud_mask).unsqueeze(0).float()
+        target_shadow_mask = torch.from_numpy(target_shadow_mask).unsqueeze(0).float()
+
         # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
         input_images = []
-        cloud_masks = []
-        shadow_masks = []
+        input_cloud_masks = []
+        input_shadow_masks = []
         timestamps = []
 
         # Load the input images and their corresponding masks.
         for input_metadata in input_metadatas:
             # Load input image.
-            with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+            if self.mode == "toa":
+                input_msi_path = input_metadata["ROI File Path"].replace("s2", "s2_toa")
+            elif self.mode == "sr":
+                input_msi_path = input_metadata["ROI File Path"]
+            with rs.open(input_msi_path) as src:
                 image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
             image = torch.from_numpy(image).float()
             input_images.append(image)
 
-            # Load cloud and shadow masks.
-            # patch_info = {"Shadow Cloud File Path": input_metadata["Shadow Cloud File Path"], "Offset": input_metadata["Offset"]}
-            # shadow_cloud_info = s2_patch_shadow_cloud_percentage(patch_info)
-
             with rs.open(input_metadata["Shadow Cloud File Path"]) as src:
-                cloud_mask = src.read(2, window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
-                shadow_mask = src.read(4, window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+                input_cloud_mask = src.read(2, window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+                input_shadow_mask = src.read(4, window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
 
-            # cloud_prob = np.where(np.isnan(cloud_prob), 100, cloud_prob)
-            # shadow_mask = np.where(np.isnan(shadow_mask), 1, shadow_mask)
-            # cloud_mask = cloud_mask_threshold(cloud_prob, 30)
-
-            cloud_masks.append(torch.from_numpy(cloud_mask).unsqueeze(0).float())
-            shadow_masks.append(torch.from_numpy(shadow_mask).unsqueeze(0).float())
+            input_cloud_masks.append(torch.from_numpy(input_cloud_mask).unsqueeze(0).float())
+            input_shadow_masks.append(torch.from_numpy(input_shadow_mask).unsqueeze(0).float())
 
             # Collect timestamps.
             capture_date = datetime.strptime(input_metadata["capture_date"], "%Y-%m-%d %H:%M:%S")
@@ -136,16 +129,18 @@ class CRDataset(Dataset):
 
         # Stack the lists of images and masks into tensors.
         input_images = torch.stack(input_images)
-        cloud_masks = torch.stack(cloud_masks)
-        shadow_masks = torch.stack(shadow_masks)
+        input_cloud_masks = torch.stack(input_cloud_masks)
+        input_shadow_masks = torch.stack(input_shadow_masks)
         timestamps = torch.tensor(timestamps)
 
         return {
             "input_images": input_images,  # Shape: (T, C, H, W)
             "target": target_image,  # Shape: (C, H, W)
+            "target_cloud_mask": target_cloud_mask,  # Shape: (1, H, W)
+            "target_shadow_mask": target_shadow_mask,  # Shape: (1, H, W)
             "timestamps": timestamps,  # Shape: (T)
-            "cloud_masks": cloud_masks,  # Shape: (T, 1, H, W)
-            "shadow_masks": shadow_masks,  # Shape: (T, 1, H, W)
+            "input_cloud_masks": input_cloud_masks,  # Shape: (T, 1, H, W)
+            "input_shadow_masks": input_shadow_masks,  # Shape: (T, 1, H, W)
         }
 
 

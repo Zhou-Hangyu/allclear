@@ -95,7 +95,8 @@ class UnCRtainTS(BaseModel):
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
-        inputs["cloud_masks"] = inputs["cloud_masks"].to(self.device)
+        inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
+        inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
         return inputs
 
     def forward(self, inputs):
@@ -108,7 +109,7 @@ class UnCRtainTS(BaseModel):
         """
         input_imgs = inputs["input_images"]
         target_imgs = inputs["target"]
-        masks = inputs["cloud_masks"]
+        masks = inputs["input_cloud_masks"]
         capture_dates = inputs["timestamps"]
         # Dates handling (see `dataLoader.py` and `train_reconstruct.py`)
         # s2_td = [(d - self.S1_LAUNCH).days for d in capture_dates]
@@ -246,8 +247,14 @@ class Simple3DUnet(BaseModel):
 
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+<<<<<<< HEAD
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, 1:4]
         inputs["cloud_masks"] = inputs["cloud_masks"].to(self.device)
+=======
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
+        inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
+>>>>>>> e696019ed3c3691acfa033c368b78a9948cf7b95
         return inputs
     
     def compute_day_differences(self, timestamps):

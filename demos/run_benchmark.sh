@@ -10,10 +10,11 @@ METADATA_PATH="/share/hariharan/cloud_removal/metadata/patch_temp/test_s2_2022_1
 MODEL_NAME="uncrtaints"
 BATCH_SIZE=4
 NUM_WORKERS=4
-DEVICE="cuda:1"
+DEVICE="cuda:0"
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
 SELECTED_ROIS='0 1 14 29'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init"
+EVAL_MODE='sr'
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 python $SCRIPT_PATH \
@@ -26,4 +27,5 @@ python $SCRIPT_PATH \
   --device $DEVICE \
   --selected-rois $SELECTED_ROIS \
   --experiment-output-path $EXP_OUTPUT_PATH \
+  --eval-mode $EVAL_MODE \
   --save-plots

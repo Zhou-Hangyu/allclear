@@ -91,6 +91,20 @@ class UnCRtainTS(BaseModel):
         config = str2list(config, ["encoder_widths", "decoder_widths", "out_conv"])
         return config
 
+    def preprocess(self, inputs):
+        # print(type(inputs['input_images']), inputs['input_images'].shape)
+        # clip each (B, T) images of shape (C, H, W) individually and then stack them
+        # input_imgs = torch.stack([torch.clip(img/10000, 0, 1) for img in inputs["input_images"]], dim=0).to(self.device)
+        # input_imgs = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        # target_imgs = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+
+        input_imgs = inputs["input_images"].to(self.device)
+        target_imgs = inputs["target"].to(self.device)
+        print(torch.max(input_imgs), torch.max(target_imgs), torch.min(input_imgs), torch.min(target_imgs))
+        masks = inputs["cloud_masks"].to(self.device)
+        capture_dates = inputs["timestamps"]
+        return input_imgs, target_imgs, masks, capture_dates
+
     def forward(self, inputs):
         """Refer to `prepare_data_multi()`
         Shapes:
@@ -100,11 +114,7 @@ class UnCRtainTS(BaseModel):
             - dates: (B, T)
         """
         # print(inputs)
-        input_imgs = inputs["input_images"].to(self.device)
-        target_imgs = inputs["target"].to(self.device)
-        masks = inputs["cloud_masks"].to(self.device)
-
-        capture_dates = inputs["timestamps"]
+        input_imgs, target_imgs, masks, capture_dates = self.preprocess(inputs)
         # Dates handling (see `dataLoader.py` and `train_reconstruct.py`)
         # s2_td = [(d - self.S1_LAUNCH).days for d in capture_dates]
         # dates = torch.tensor(s2_td, dtype=torch.float32).to(self.device)

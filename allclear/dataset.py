@@ -99,9 +99,9 @@ class CRDataset(Dataset):
         # Load the target image.
         with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
             target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
-            target_image = torch.from_numpy(target_image).float()
+        target_image = torch.from_numpy(target_image).float()
             # target_image = (target_image - target_image.min()) / (target_image.max() - target_image.min()) # TODO check preprocessing steps.
-            target_image = torch.clip(target_image/10000, 0, 1)
+        target_image = torch.clip(target_image/10000, 0, 1)
 
         # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
         input_images = []
@@ -114,10 +114,10 @@ class CRDataset(Dataset):
             # Load input image.
             with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
                 image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
-                image = torch.from_numpy(image).float()
-                # image = (image - image.min()) / (image.max() - image.min())
-                image = torch.clip(image/10000, 0, 1)
-                input_images.append(image)
+            image = torch.from_numpy(image).float()
+            # image = (image - image.min()) / (image.max() - image.min())
+            image = torch.clip(image/10000, 0, 1)
+            input_images.append(image)
 
             # Load cloud and shadow masks.
             # patch_info = {"Shadow Cloud File Path": input_metadata["Shadow Cloud File Path"], "Offset": input_metadata["Offset"]}

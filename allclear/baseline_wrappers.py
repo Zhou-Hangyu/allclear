@@ -4,14 +4,7 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-# sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
-sys.path.append("/home/hz477/declousion/baselines/UnCRtainTS/model")
-
-# Import model classes
-from baselines.UnCRtainTS.model.src.model_utils import get_model, load_checkpoint
-from baselines.UnCRtainTS.model.src.utils import str2list
-from baselines.UnCRtainTS.model.parse_args import create_parser
-
+sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
 
 class BaseModel(ABC):
     def __init__(self, args):
@@ -42,6 +35,7 @@ class BaseModel(ABC):
 class UnCRtainTS(BaseModel):
     def __init__(self, args):
         super().__init__(args)
+        from baselines.UnCRtainTS.model.src.model_utils import get_model, load_checkpoint
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
         self.S1_LAUNCH = to_date("2014-04-03")
@@ -59,6 +53,8 @@ class UnCRtainTS(BaseModel):
         pass
 
     def get_config(self):
+        from baselines.UnCRtainTS.model.src.utils import str2list
+        from baselines.UnCRtainTS.model.parse_args import create_parser
         parser = create_parser(mode="test")
         conf_path = os.path.join(self.args.baseline_base_path, self.args.weight_folder, self.args.experiment_name, "conf.json")
         with open(conf_path, "r") as f:

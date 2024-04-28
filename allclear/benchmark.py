@@ -43,7 +43,18 @@ class BenchmarkEngine:
         self.args = args
         self.device = torch.device(args.device)
         self.data_loader = self.setup_data_loader()
-        self.model = UnCRtainTS(args)
+        self.model = self.setup_model()
+
+    def setup_model(self):
+        if self.args.model_name == "uncrtaints":
+            model = UnCRtainTS(self.args)
+        elif self.args.model_name == "leastcloudy":
+            model = LeastCloudy(self.args)
+        elif self.args.model_name == "mosaicing":
+            model = Mosaicing(self.args)
+        else:
+            raise ValueError(f"Invalid model name: {self.args.model_name}")
+        return model
 
     def setup_data_loader(self):
         dataset = CRDataset(
@@ -56,9 +67,10 @@ class BenchmarkEngine:
         outputs_all = []
         targets_all = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
-            targets = data["target"].to(self.device)
-            targets_all.append(targets.cpu())
             with torch.no_grad():
+                data = self.model.preprocess(data)
+                targets = data["target"].to(self.device)
+                targets_all.append(targets.cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs[0].cpu())
                 # save results

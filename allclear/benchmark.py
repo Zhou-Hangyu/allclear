@@ -109,6 +109,14 @@ class BenchmarkEngine:
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
 
+        # Remove B10 from the outputs and targets for evaluation
+        # toa_no_b10 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+        # outputs = outputs[:, :, toa_no_b10, :, :]
+        # targets = targets[:, :, toa_no_b10, :, :]
+        targets = targets[:, :, self.args.eval_bands, :, :]
+
+        print(outputs.shape, targets.shape, masks.shape)
+
         evaluation_results = metrics.evaluate(outputs, targets, masks)
         print(evaluation_results)
         return outputs, targets
@@ -135,6 +143,7 @@ def parse_arguments():
     parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init", help="Path to save the experiment results")
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
     parser.add_argument("--eval-mode", type=str, default="toa", choices=["toa", "sr"], help="Evaluation mode for the dataset")
+    parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
 
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")

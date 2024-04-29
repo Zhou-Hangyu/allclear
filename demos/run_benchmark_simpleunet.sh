@@ -14,8 +14,9 @@ DEVICE="cuda:0"
 EVAL_MODE="sr"
 
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
-# SELECTED_ROIS='0 1 14 29'
-SELECTED_ROIS="29"
+#SELECTED_ROIS='0 1 14 29'
+SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
+#SELECTED_ROIS="29"
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/init"
 EVAL_BANDS="3 2 1"
 

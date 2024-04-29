@@ -87,8 +87,12 @@ class CRDataset(Dataset):
 
         # Load the target image and the corresponding mask.
         if self.mode == "toa":
-            with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
-                target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+            try:
+                with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+                    target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+            except Exception as e:
+                print(e)
+
         elif self.mode == "sr":
             with rs.open(target_metadata["ROI File Path"]) as src:
                 target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
@@ -109,8 +113,11 @@ class CRDataset(Dataset):
         # Load the input images and their corresponding masks.
         for input_metadata in input_metadatas:
             if self.mode == "toa":
-                with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
-                    image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+                try:
+                    with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+                        image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+                except Exception as e:
+                    print(e)
             elif self.mode == "sr":
                 with rs.open(input_metadata["ROI File Path"]) as src:
                     image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))

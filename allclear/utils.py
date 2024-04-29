@@ -41,6 +41,7 @@ def visualize_with_grid(
             # Load MSI data
             with rs.open(msi) as src:
                 msi_data = src.read()
+                # TODO: automatic normalization
                 msi_data = np.clip(msi_data/3000, 0, 1)
         else:
             msi_data = msi

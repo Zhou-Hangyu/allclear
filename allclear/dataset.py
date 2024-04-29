@@ -22,6 +22,8 @@ def cloud_mask_threshold(cloud_prob_map, threshold=30):
     return cloud_mask
 
 
+
+
 class CRDataset(Dataset):
     """
     A PyTorch Dataset class for loading satellite image data for cloud removal tasks.
@@ -85,11 +87,11 @@ class CRDataset(Dataset):
 
         # Load the target image and the corresponding mask.
         if self.mode == "toa":
-            target_msi_path = target_metadata["ROI File Path"].replace("s2", "s2_toa")
+            with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+                target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
         elif self.mode == "sr":
-            target_msi_path = target_metadata["ROI File Path"]
-        with rs.open(target_msi_path) as src:
-            target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+            with rs.open(target_metadata["ROI File Path"]) as src:
+                target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
         target_image = torch.from_numpy(target_image).float().unsqueeze(0)
 
         with rs.open(target_metadata["Shadow Cloud File Path"]) as src:
@@ -106,13 +108,13 @@ class CRDataset(Dataset):
 
         # Load the input images and their corresponding masks.
         for input_metadata in input_metadatas:
-            # Load input image.
             if self.mode == "toa":
-                input_msi_path = input_metadata["ROI File Path"].replace("s2", "s2_toa")
+                with rs.open(input_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
+                    image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
             elif self.mode == "sr":
-                input_msi_path = input_metadata["ROI File Path"]
-            with rs.open(input_msi_path) as src:
-                image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+                with rs.open(input_metadata["ROI File Path"]) as src:
+                    image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
+
             image = torch.from_numpy(image).float()
             input_images.append(image)
 
@@ -126,12 +128,15 @@ class CRDataset(Dataset):
             # Collect timestamps.
             capture_date = datetime.strptime(input_metadata["capture_date"], "%Y-%m-%d %H:%M:%S")
             timestamps.append(capture_date.timestamp())
-#TODO: unsqueeze(0
+
         # Stack the lists of images and masks into tensors.
         input_images = torch.stack(input_images)
         input_cloud_masks = torch.stack(input_cloud_masks)
         input_shadow_masks = torch.stack(input_shadow_masks)
         timestamps = torch.tensor(timestamps)
+
+        # make TOA's Band 10 all zeros
+        # input_images[:, 10, :, :] = 0
 
         return {
             "input_images": input_images,  # Shape: (T, C, H, W)

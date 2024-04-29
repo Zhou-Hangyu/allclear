@@ -7,6 +7,18 @@ import torch
 sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
 sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
+def s2_boa2toa(s2_boa):
+    """Cast Sentinel-2 Bottom of Atmosphere (BOA) data to the shape of Top of Atmosphere (TOA) data.
+    Specifically: BxTx12xHxW -> BxTx13xHxW
+    - Use zeros for band10.
+    - Remove bands not present in TOA data."""
+    B, T, _, H, W = s2_boa.shape
+    before_band10 = s2_boa[:, :, :10, :, :]
+    zeros = torch.zeros((B, T, 1, H, W), device=s2_boa.device)
+    after_band10 = s2_boa[:, :, 10:12, :, :]
+    s2_toa = torch.cat((before_band10, zeros, after_band10), dim=2)
+    return s2_toa
+
 class BaseModel(ABC):
     def __init__(self, args):
         self.args = args
@@ -95,6 +107,11 @@ class UnCRtainTS(BaseModel):
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+
+        if self.args.eval_mode == "sr":
+            inputs["input_images"] = s2_boa2toa(inputs["input_images"])
+            inputs["target"] = s2_boa2toa(inputs["target"])
+
         inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
         inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
         return inputs
@@ -247,7 +264,7 @@ class Simple3DUnet(BaseModel):
 
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, 1:4]
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
         inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
         inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
         return inputs
@@ -266,8 +283,8 @@ class Simple3DUnet(BaseModel):
         """Refer to `prepare_data_multi()`
         Shapes:
             - input_imgs: (B, T, C, H, W)
-            - target_imgs: (B, C, H, W)
-            - masks: (B, T, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, 1, H, W)
             - dates: (B, T)
         """
 
@@ -278,7 +295,7 @@ class Simple3DUnet(BaseModel):
             - input_imgs channels: (B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B10, B11, B12) -> (B4, B3, B2, B5, B6, B7, B8, B8A, B11, B12) + (dummy, dummy), dummy = 0
         """
 
-        BS, T, _, H, W = inputs["input_images"].shape
+        BS, T, C, H, W = inputs["input_images"].shape
         
         # Input transformation
         input_imgs = inputs["input_images"] * 2 - 1
@@ -312,8 +329,10 @@ class Simple3DUnet(BaseModel):
 
         with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.float16):
+                # print(input_buffer.shape, emb.shape)
                 prediction = self.model(input_buffer, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
         prediction = torch.flip(prediction[:, :, 3], dims=[1])
+        # print(prediction.shape)
 
         # # save prediction and input_imgs, and targets results in numpy format
         # self.args.res_dir = "/share/hariharan/ck696/Decloud/UNet/results/test_buffer"

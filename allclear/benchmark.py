@@ -106,8 +106,9 @@ class BenchmarkEngine:
 
 
         outputs = torch.cat(outputs_all, dim=0)
-        targets = torch.cat(targets_all, dim=0).unsqueeze(1)
-        masks = torch.cat(target_masks_all, dim=0).unsqueeze(1)
+        targets = torch.cat(targets_all, dim=0)
+        masks = torch.cat(target_masks_all, dim=0)
+
         evaluation_results = metrics.evaluate(outputs, targets, masks)
         print(evaluation_results)
         return outputs, targets

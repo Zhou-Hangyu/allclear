@@ -50,3 +50,11 @@ This project is licensed under the [MIT License](LICENSE).
   * They will have a wrapper in `allclear/baselines.py` with uniform input/output format for easy comparison.
 * The `demo` folder contains minimal code to demonstrate the use of the dataset and benchmark.
 * For all other code, please put them in the `/experimental_scripts` folder for now.
+
+## TODOs
+- [ ] Stratified evaluation on various factors
+  - Cloud & shadow coverage percentage.
+  - Land cover type.
+  - Time (season).
+  - Geolocation.
+  - Satellite type.

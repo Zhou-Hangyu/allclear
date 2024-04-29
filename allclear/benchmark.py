@@ -29,6 +29,26 @@ class Metrics:
             return 20 * torch.log10(max_pixel / torch.sqrt(mse))
 
     @staticmethod
+    def psnr(output, target, mask=None, max_pixel=1.0):
+        mse = F.mse_loss(output, target, reduction='none')
+        if mask is not None:
+            mse = mse * mask
+        mse_per_channel = mse.mean(dim=(0, 1, 3, 4))  # Averaging over B, T, H, W
+        psnr_per_channel = 20 * torch.log10(max_pixel / torch.sqrt(mse_per_channel))
+        rgb_channels = [3, 2, 1]
+        if output.shape[2] >= max(rgb_channels):  # Check if the RGB channels are present
+            mse_rgb = mse[:, :, rgb_channels, :, :].mean()
+            avg_psnr_rgb = 20 * torch.log10(max_pixel / torch.sqrt(mse_rgb))
+        else:
+            avg_psnr_rgb = torch.tensor(float('nan'))  # Not enough channels for RGB computation
+
+        mse_overall = mse.mean()
+        avg_psnr_overall = 20 * torch.log10(max_pixel / torch.sqrt(mse_overall))
+
+        return psnr_per_channel, avg_psnr_rgb, avg_psnr_overall
+
+
+    @staticmethod
     def mae(output, target, mask=None):
         mae = F.l1_loss(output, target)
         if mask is not None:
@@ -114,8 +134,6 @@ class BenchmarkEngine:
         # outputs = outputs[:, :, toa_no_b10, :, :]
         # targets = targets[:, :, toa_no_b10, :, :]
         targets = targets[:, :, self.args.eval_bands, :, :]
-
-        print(outputs.shape, targets.shape, masks.shape)
 
         evaluation_results = metrics.evaluate(outputs, targets, masks)
         print(evaluation_results)

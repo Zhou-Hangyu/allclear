@@ -8,14 +8,14 @@ BASELINE_BASE_PATH='/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS
 DATA_PATH="/share/hariharan/cloud_removal/metadata/split_temp/test_s2_2022_1-2022_12_patches_t3.csv"
 METADATA_PATH="/share/hariharan/cloud_removal/metadata/patch_temp/test_s2_2022_1-2022_12_ts_cr_more_metadata.csv"
 MODEL_NAME="uncrtaints"
-BATCH_SIZE=1
-NUM_WORKERS=2
+BATCH_SIZE=4
+NUM_WORKERS=4
 DEVICE="cuda:0"
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
 SELECTED_ROIS='0 1 14 29'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init"
-EVAL_MODE='sr'
-#EVAL_MODE='toa'
+#EVAL_MODE='sr'
+EVAL_MODE='toa'
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 python $SCRIPT_PATH \

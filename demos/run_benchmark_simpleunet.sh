@@ -8,7 +8,7 @@ BASELINE_BASE_PATH='/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS
 DATA_PATH="/share/hariharan/cloud_removal/metadata/split_temp/test_s2_2022_1-2022_12_patches_t3.csv"
 METADATA_PATH="/share/hariharan/cloud_removal/metadata/patch_temp/test_s2_2022_1-2022_12_ts_cr_more_metadata.csv"
 MODEL_NAME="simpleunet"
-BATCH_SIZE=2
+BATCH_SIZE=1
 NUM_WORKERS=2
 DEVICE="cuda:0"
 EVAL_MODE="sr"
@@ -17,6 +17,7 @@ EVAL_MODE="sr"
 # SELECTED_ROIS='0 1 14 29'
 SELECTED_ROIS="29"
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/init"
+EVAL_BANDS="3 2 1"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 python $SCRIPT_PATH \
@@ -30,4 +31,5 @@ python $SCRIPT_PATH \
   --selected-rois $SELECTED_ROIS \
   --experiment-output-path $EXP_OUTPUT_PATH \
   --save-plots \
-  --eval-mode $EVAL_MODE
+  --eval-mode $EVAL_MODE \
+  --eval-bands $EVAL_BANDS

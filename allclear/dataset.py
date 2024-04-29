@@ -90,13 +90,13 @@ class CRDataset(Dataset):
             target_msi_path = target_metadata["ROI File Path"]
         with rs.open(target_msi_path) as src:
             target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
-        target_image = torch.from_numpy(target_image).float()
+        target_image = torch.from_numpy(target_image).float().unsqueeze(0)
 
         with rs.open(target_metadata["Shadow Cloud File Path"]) as src:
             target_cloud_mask = src.read(2, window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
             target_shadow_mask = src.read(4, window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
-        target_cloud_mask = torch.from_numpy(target_cloud_mask).unsqueeze(0).float()
-        target_shadow_mask = torch.from_numpy(target_shadow_mask).unsqueeze(0).float()
+        target_cloud_mask = torch.from_numpy(target_cloud_mask).float().unsqueeze(0).unsqueeze(0)
+        target_shadow_mask = torch.from_numpy(target_shadow_mask).float().unsqueeze(0).unsqueeze(0)
 
         # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
         input_images = []
@@ -126,7 +126,7 @@ class CRDataset(Dataset):
             # Collect timestamps.
             capture_date = datetime.strptime(input_metadata["capture_date"], "%Y-%m-%d %H:%M:%S")
             timestamps.append(capture_date.timestamp())
-
+#TODO: unsqueeze(0
         # Stack the lists of images and masks into tensors.
         input_images = torch.stack(input_images)
         input_cloud_masks = torch.stack(input_cloud_masks)
@@ -135,9 +135,9 @@ class CRDataset(Dataset):
 
         return {
             "input_images": input_images,  # Shape: (T, C, H, W)
-            "target": target_image,  # Shape: (C, H, W)
-            "target_cloud_mask": target_cloud_mask,  # Shape: (1, H, W)
-            "target_shadow_mask": target_shadow_mask,  # Shape: (1, H, W)
+            "target": target_image,  # Shape: (T, C, H, W)
+            "target_cloud_mask": target_cloud_mask,  # Shape: (1, 1, H, W)
+            "target_shadow_mask": target_shadow_mask,  # Shape: (1, 1, H, W)
             "timestamps": timestamps,  # Shape: (T)
             "input_cloud_masks": input_cloud_masks,  # Shape: (T, 1, H, W)
             "input_shadow_masks": input_shadow_masks,  # Shape: (T, 1, H, W)

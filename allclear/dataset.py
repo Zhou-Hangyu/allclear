@@ -118,6 +118,7 @@ class CRDataset(Dataset):
                         image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))
                 except Exception as e:
                     print(e)
+                    return None
             elif self.mode == "sr":
                 with rs.open(input_metadata["ROI File Path"]) as src:
                     image = src.read(window=rs.windows.Window(*eval(input_metadata["Offset"]), 256, 256))

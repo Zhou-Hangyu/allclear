@@ -2,8 +2,10 @@ import argparse
 import logging
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import torch.nn.functional as F
+from torch.autograd import Variable
+from math import exp
+from tqdm import tqdm
 import sys
 
 # import lpips
@@ -21,31 +23,70 @@ from baselines.UnCRtainTS.model.parse_args import create_parser
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
+
+
+
+
+
 class Metrics:
-    def __init__(self, args):
+    def __init__(self, args, outputs, targets, masks):
         self.device = torch.device(args.device)
-        # self.lpips_loss_fn = lpips.LPIPS(net='alex').to(self.device)
-    @staticmethod
-    def mae(output, target, mask=None):
-        if mask is None:
+        self.outputs = outputs.to(self.device)
+        self.targets = targets.to(self.device)
+        self.masks = masks.to(self.device)
+
+    def mae(self):
+        if self.masks is None:
             raise ValueError("Mask is required for MAE calculation")
-        mae_mask = torch.mean(F.l1_loss(output, target, reduction='none') * mask)
-        return mae_mask
+        output_masked = self.outputs * self.masks
+        target_masked = self.targets * self.masks
+        mae_masked = F.l1_loss(output_masked, target_masked, reduction='none') * self.masks
+        mae_masked_sum = mae_masked.sum(dim=[3, 4])
+        mask_sum = self.masks.sum(dim=[3, 4])
+        mae_masked_mean = mae_masked_sum / mask_sum
+        mean_mae = mae_masked_mean.mean()
+        return mean_mae
 
-    @staticmethod
-    def rmse(output, target, mask=None):
-        if mask is None:
+    def rmse(self):
+        if self.masks is None:
             raise ValueError("Mask is required for RMSE calculation")
-        mse_mask = torch.mean(F.mse_loss(output, target, reduction='none') * mask)
-        return torch.sqrt(mse_mask)
+        output_masked = self.outputs * self.masks
+        target_masked = self.targets * self.masks
+        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
+        mse_masked_sum = mse_masked.sum(dim=[3, 4])
+        mask_sum = self.masks.sum(dim=[3, 4])
+        mse_masked_mean = mse_masked_sum / mask_sum
+        rmse_masked = torch.sqrt(mse_masked_mean)
+        mean_rmse = rmse_masked.mean()
+        return mean_rmse
 
 
-    @staticmethod
-    def psnr(output, target, mask=None, max_pixel=1.0):
-        if mask is None:
-            raise ValueError("Mask is required for PSNR calculation")
-        mse_mask = torch.mean(F.mse_loss(output, target, reduction='none') * mask)
-        return 20 * torch.log10(max_pixel / torch.sqrt(mse_mask))
+    def psnr(self, max_pixel=1.0):
+        if self.masks is None:
+            raise ValueError("Mask is required for RMSE calculation")
+        output_masked = self.outputs * self.masks
+        target_masked = self.targets * self.masks
+        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
+        mse_masked_sum = mse_masked.sum(dim=[3, 4])
+        mask_sum = self.masks.sum(dim=[3, 4])
+        mse_masked_mean = mse_masked_sum / mask_sum
+        psnr_masked = 20 * torch.log10(max_pixel / torch.sqrt(mse_masked_mean))
+        mean_psnr = psnr_masked.mean()
+        return mean_psnr
+
+    def sam(self):
+        if self.masks is None:
+            raise ValueError("Mask is required for SAM calculation")
+        norm_out = F.normalize(self.outputs, p=2, dim=2)
+        norm_tar = F.normalize(self.targets, p=2, dim=2)
+        dot_product = (norm_out * norm_tar).sum(2).clamp(-1, 1)
+        angles = torch.acos(dot_product)
+        angles_masked = angles.unsqueeze(2) * self.masks
+        angles_sum = angles_masked.sum(dim=[-2, -1])
+        mask_sum = self.masks.sum(dim=[-2, -1])
+        angles_mean = angles_sum / mask_sum
+        mean_sam = angles_mean.mean()
+        return mean_sam
 
     # @staticmethod
     # def ssim(output, target, mask=None, data_range=1.0):
@@ -55,61 +96,56 @@ class Metrics:
     #     masked_target = target * mask
     #     return ssim(masked_output, masked_target, data_range=data_range, size_average=True)
 
-    @staticmethod
-    def gaussian_window(size, sigma, device):
+    def gaussian(self, window_size, sigma):
+        """Create a 1D Gaussian window."""
+        gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
+        return gauss / gauss.sum()
+
+    def create_window(self, window_size, channel):
+        """Create a 2D Gaussian window."""
+        _1D_window = self.gaussian(window_size, 1.5).unsqueeze(1)
+        _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+        window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
+        return window
+
+    def ssim(self, img1, img2, mask, size_average=True):
+        """Compute the SSIM index between two images.
+        Reference: https://github.com/Po-Hsun-Su/pytorch-ssim
         """
-        Create a Gaussian window for SSIM computation.
-        """
-        coords = torch.arange(size, dtype=torch.float32, device=device) - size // 2
-        grid = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
-        grid /= grid.sum()
-        return grid.view(1, 1, 1, -1) * grid.view(1, 1, 1, -1).transpose(-1, -2)
+        if img1.size() != img2.size():
+            raise ValueError("Input images must have the same dimensions.")
 
-    def ssim(self, output, target, mask=None, window_size=11, sigma=1.5, K1=0.01, K2=0.03, L=1.0):
-        if mask is None:
-            raise ValueError("Mask is required for SSIM calculation")
+        (_, _, channel, _, _) = img1.size()
+        if channel != self.channel:
+            self.channel = channel
+            self.window = self.create_window(self.window_size, self.channel)
+            self.window = self.window.type_as(img1).to(img1.device)
 
-        C1 = (K1 * L) ** 2
-        C2 = (K2 * L) ** 2
-        window = self.gaussian_window(window_size, sigma, self.device).to(output.device)
+        # Apply mask to images
+        img1 = img1 * mask
+        img2 = img2 * mask
 
-        mu_x = F.conv2d(output, window, padding=window_size // 2, groups=1)
-        mu_y = F.conv2d(target, window, padding=window_size // 2, groups=1)
+        # Preparing the SSIM window
+        window = self.window.expand(img1.size(0), channel, self.window_size, self.window_size).contiguous()
 
-        sigma_x = F.conv2d(output * output, window, padding=window_size // 2, groups=1)
-        sigma_y = F.conv2d(target * target, window, padding=window_size // 2, groups=1)
-        sigma_xy = F.conv2d(output * target, window, padding=window_size // 2, groups=1)
+        # SSIM calculation
+        mu1 = F.conv2d(img1.view(-1, *img1.shape[-3:]), window, padding=self.window_size // 2, groups=channel)
+        mu2 = F.conv2d(img2.view(-1, *img2.shape[-3:]), window, padding=self.window_size // 2, groups=channel)
+        sigma1_sq = F.conv2d(img1 * img1, window, padding=self.window_size // 2, groups=channel) - mu1.pow(2)
+        sigma2_sq = F.conv2d(img2 * img2, window, padding=self.window_size // 2, groups=channel) - mu2.pow(2)
+        sigma12 = F.conv2d(img1 * img2, window, padding=self.window_size // 2, groups=channel) - mu1 * mu2
 
-        mu_x_mu_y = mu_x * mu_y
-        sigma_x += -mu_x * mu_x
-        sigma_y += -mu_y * mu_y
-        sigma_xy += -mu_x_mu_y
+        C1 = 0.01 ** 2
+        C2 = 0.03 ** 2
 
-        ssim_map = ((2 * mu_x_mu_y + C1) * (2 * sigma_xy + C2)) / (
-                (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2))
+        ssim_map = ((2 * mu1 * mu2 + C1) * (2 * sigma12 + C2)) / ((mu1.pow(2) + mu2.pow(2) + C1) * (sigma1_sq + sigma2_sq + C2))
 
-        if mask is not None:
-            ssim_map = ssim_map * mask
-
-        return ssim_map[mask.bool()].mean()
-
-    def sam(self, output, target, mask=None):
-        if mask is None:
-            raise ValueError("Mask is required for SAM calculation")
-
-        flat_output = output.flatten(start_dim=2)  # Flatten B, T, H, W into one dimension
-        flat_target = target.flatten(start_dim=2)
-        norm_out = F.normalize(flat_output, p=2, dim=2)
-        norm_tar = F.normalize(flat_target, p=2, dim=2)
-        dot_product = (norm_out * norm_tar).sum(2)
-
-        flat_mask = mask.flatten(start_dim=2)
-        if flat_mask.any():
-            masked_dot_product = dot_product[flat_mask.bool()].clamp(-1, 1)
-            angle = torch.acos(masked_dot_product)
-            return angle.mean()
+        if size_average:
+            return ssim_map.mean()
         else:
-            return torch.tensor(float('nan'))
+            return ssim_map.view(img1.size(0), img1.size(1), -1).mean(2)
+
+
 
     def lpips(self, output, target, mask=None):
         if mask is None:
@@ -124,31 +160,25 @@ class Metrics:
         else:
             return torch.tensor(float('nan'))
 
-    def evaluate(self, output, target, mask):
+    def evaluate(self, psnr_max=1.0):
         return {
-            "MAE": self.mae(output, target, mask),
-            "RMSE": self.rmse(output, target, mask),
-            "PSNR": self.psnr(output, target, mask),
+            "MAE": self.mae(),
+            "RMSE": self.rmse(),
+            "PSNR": self.psnr(max_pixel=psnr_max),
+            "SAM": self.sam(),
             # "SSIM": self.ssim(output, target, mask),
-            # "SAM": self.sam(output, target, mask),
             # "LPIPS": self.lpips(output, target, mask)
         }
-from ignite.engine import *
-from ignite.handlers import *
-from ignite.metrics import *
-from ignite.metrics.regression import *
-from ignite.utils import *
-# class Metrics:
-#     pass
 
-
-from torch.utils.data.dataloader import default_collate
-def custom_collate_fn(batch):
-    # Filter out all None values
-    filtered_batch = [b for b in batch if b is not None]
-    if len(filtered_batch) == 0:
-        return None  # or handle this scenario appropriately
-    return default_collate(filtered_batch)
+#
+#
+# from torch.utils.data.dataloader import default_collate
+# def custom_collate_fn(batch):
+#     # Filter out all None values
+#     filtered_batch = [b for b in batch if b is not None]
+#     if len(filtered_batch) == 0:
+#         return None  # or handle this scenario appropriately
+#     return default_collate(filtered_batch)
 
 
 class BenchmarkEngine:
@@ -216,16 +246,16 @@ class BenchmarkEngine:
 
         # evaluation_results = metrics.evaluate(outputs, targets, masks)
         # print(evaluation_results)
-        def eval_step(engine, batch):
-            return batch
-
-        default_evaluator = Engine(eval_step)
-        metric = SSIM(data_range=1.0)
-        metric.attach(default_evaluator, 'ssim')
-        print(outputs.flatten(0,1).shape)
-        state = default_evaluator.run([[outputs.flatten(0,1), targets.flatten(0,1)]])
-        print(state.metrics['ssim'])
-        return outputs, targets
+        # def eval_step(engine, batch):
+        #     return batch
+        #
+        # default_evaluator = Engine(eval_step)
+        # metric = SSIM(data_range=1.0)
+        # metric.attach(default_evaluator, 'ssim')
+        # print(outputs.flatten(0,1).shape)
+        # state = default_evaluator.run([[outputs.flatten(0,1), targets.flatten(0,1)]])
+        # print(state.metrics['ssim'])
+        return outputs, targets, masks
 
     def save_results(self, output, target, timestamp, res_dir):
         pass

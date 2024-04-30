@@ -42,9 +42,10 @@ def visualize_with_grid(
             with rs.open(msi) as src:
                 msi_data = src.read()
                 # TODO: automatic normalization
-                msi_data = np.clip(msi_data/3000, 0, 1)
+                msi_data = np.clip(msi_data / 3000, 0, 1)
         else:
             msi_data = msi
+            msi_data = np.clip(msi_data * 10000 / 3000, 0, 1)
     elif sar is not None:
         # Load SAR data
         with rs.open(sar) as src:
@@ -58,10 +59,13 @@ def visualize_with_grid(
     overlays = []
 
     # Load cloud data if specified
-    if cloud and cloud_channel is not None:
-        with rs.open(cloud) as src:
-            cloud_data = src.read()
-        overlays.append((cloud_data[cloud_channel, ...], cloud_color))
+    if cloud is not None:
+        if isinstance(cloud, str):
+            with rs.open(cloud) as src:
+                cloud_data = src.read()[cloud_channel, ...]
+        else:
+            cloud_data = cloud
+        overlays.append((cloud_data, cloud_color))
 
     # Load shadow data if specified
     if shadow and shadow_channel is not None:
@@ -89,12 +93,12 @@ def visualize_with_grid(
         # p2, p98 = np.percentile(msi_data[msi_channels, ...], [2, 98])
         # msi_normalized = np.clip((msi_data[msi_channels, ...] - p2) / (p98 - p2), 0, 1)
         # plt.imshow(msi_normalized.permute(1, 2, 0), interpolation="nearest")
-        plt.imshow(msi_data[msi_channels, ...].transpose((1, 2, 0)), interpolation="nearest", vmin=0, vmax=1)
+        plt.imshow(msi_data[msi_channels, ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
     elif sar is not None:
         # Process and display SAR image
         p2, p98 = np.percentile(sar_data[sar_channels, ...], [2, 98])
         sar_normalized = np.clip((sar_data[sar_channels, ...] - p2) / (p98 - p2), 0, 1)
-        plt.imshow(sar_normalized.transpose((1, 2, 0)), interpolation="nearest", cmap="gray")
+        plt.imshow(sar_normalized.permute(1, 2, 0), interpolation="nearest", cmap="gray")
 
     # Apply overlays
     for overlay_data, color in overlays:

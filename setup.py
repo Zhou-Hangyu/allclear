@@ -11,6 +11,7 @@ setup(
         'numpy',
         'matplotlib',
         'pandas',
+        'lpips',
     ],
     url='https://github.com/Zhou-Hangyu/allclear',
     license='MIT',

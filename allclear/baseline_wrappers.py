@@ -4,8 +4,13 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
+if "ck696" in os.getcwd():
+    sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
+    sys.path.append("/share/hariharan/ck696/allclear/baselines")
+    sys.path.append("/share/hariharan/ck696/allclear")
+else:
+    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
+    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
 def s2_boa2toa(s2_boa):
     """Cast Sentinel-2 Bottom of Atmosphere (BOA) data to the shape of Top of Atmosphere (TOA) data.
@@ -214,7 +219,7 @@ class Simple3DUnet(BaseModel):
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
 
-        self.config = self.get_config()  # bug
+        self.get_config(args)  # bug
         self.model = self.get_model().to(self.device)
         self.model.eval()
 
@@ -227,40 +232,34 @@ class Simple3DUnet(BaseModel):
 
         down_block_dict = {"C": "DownBlock3D", "A": "CrossAttnDownBlock3D", "J": "DownBlockJust2D", "R": "CrossAttnDownBlock2D1D"}
         up_block_dict = {"C": "UpBlock3D", "A": "CrossAttnUpBlock3D", "J": "UpBlockJust2D", "R": "CrossAttnUpBlock2D1D"}
-        down_block_list = [down_block_dict[b] for b in self.config.model_blocks]
-        up_block_list = [up_block_dict[b] for b in self.config.model_blocks][::-1]
+        down_block_list = [down_block_dict[b] for b in self.model_blocks]
+        up_block_list = [up_block_dict[b] for b in self.model_blocks][::-1]
 
         model = UNet3DConditionModel(
-            sample_size=self.config.image_size,  # the target image resolution
-            in_channels=self.config.in_channel,  # the number of input channels, 3 for RGB images
-            out_channels=self.config.out_channel,  # the number of output channels
-            layers_per_block=self.config.LPB,  # how many ResNet layers to use per UNet block
-            block_out_channels=(128, 128, 256, self.config.max_dim, self.config.max_dim, self.config.max_dim, self.config.max_dim)[:len(self.config.model_blocks)],  # the number of output channels for each UNet block
+            sample_size=self.image_size,  # the target image resolution
+            in_channels=self.in_channel,  # the number of input channels, 3 for RGB images
+            out_channels=self.out_channel,  # the number of output channels
+            layers_per_block=1,  # how many ResNet layers to use per UNet block
+            block_out_channels=(128, 128, 256, self.max_dim, self.max_dim, self.max_dim, self.max_dim)[:len(self.model_blocks)],  # the number of output channels for each UNet block
             down_block_types=down_block_list,  # the down block sequence
             up_block_types=up_block_list,  # the up block sequence
-            norm_num_groups=self.config.norm_num_groups,  # the number of groups for normalization
+            norm_num_groups=self.norm_num_groups,  # the number of groups for normalization
         )
 
-        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_12.pt"
-        model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(self.checkpoint, map_location=torch.device('cpu')))
         model.eval()
 
         return model
 
-    def get_config(self):
+    def get_config(self, args):
 
-        class Args:
-            image_size = 256
-            in_channel = 12
-            out_channel = 3
-            LPB = 1
-            max_dim = 512
-            model_blocks = 'CRRAAA'
-            cross_attention_dim = 32
-            norm_num_groups = 4
-
-        config = Args()
-        return config
+        self.image_size = args.su_image_size
+        self.in_channel = args.su_in_channel
+        self.out_channel = args.su_out_channel
+        self.max_dim = args.su_max_dim
+        self.model_blocks = args.su_model_blocks
+        self.norm_num_groups = args.su_norm_num_groups
+        self.checkpoint = args.su_checkpoint
 
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)

@@ -16,9 +16,14 @@ EVAL_MODE="sr"
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
 #SELECTED_ROIS='0 1 14 29'
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
+SELECTED_ROIS='52' # 13 test rois from sen12ms-cr-ts
 #SELECTED_ROIS="29"
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/init"
 EVAL_BANDS="3 2 1"
+
+# simpleunet configs
+SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_12.pt"
+
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 python $SCRIPT_PATH \
@@ -33,4 +38,5 @@ python $SCRIPT_PATH \
   --experiment-output-path $EXP_OUTPUT_PATH \
   --save-plots \
   --eval-mode $EVAL_MODE \
-  --eval-bands $EVAL_BANDS
+  --eval-bands $EVAL_BANDS \
+  --su-checkpoint $SU_CHECKPOINT

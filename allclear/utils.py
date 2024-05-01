@@ -7,6 +7,60 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 
+def plot_lulc_metrics(metrics_data, dpi=200):
+    """
+    Plot LULC metrics for each class and metric type using dynamic world v1 colors.
+
+    Args:
+    metrics_data (dict): A dictionary with class indices as keys and dictionaries of metrics as values.
+    
+    Example:
+    metrics_data = {
+        0: {'MAE': 0.1, 'RMSE': 0.2, 'PSNR': 30.0, 'SAM': 0.1, 'SSIM': 0.9},
+        1: {'MAE': 0.2, 'RMSE': 0.3, 'PSNR': 29.0, 'SAM': 0.2, 'SSIM': 0.8},
+        2: {'MAE': 0.3, 'RMSE': 0.4, 'PSNR': 28.0, 'SAM': 0.3, 'SSIM': 0.7},
+        3: {'MAE': 0.4, 'RMSE': 0.5, 'PSNR': 27.0, 'SAM': 0.4, 'SSIM': 0.6},
+        4: {'MAE': 0.5, 'RMSE': 0.6, 'PSNR': 26.0, 'SAM': 0.5, 'SSIM': 0.5},
+        5: {'MAE': 0.6, 'RMSE': 0.7, 'PSNR': 25.0, 'SAM': 0.6, 'SSIM': 0.4},
+        6: {'MAE': 0.7, 'RMSE': 0.8, 'PSNR': 24.0, 'SAM': 0.7, 'SSIM': 0.3},
+        7: {'MAE': 0.8, 'RMSE': 0.9, 'PSNR': 23.0, 'SAM': 0.8, 'SSIM': 0.2},
+        8: {'MAE': 0.9, 'RMSE': 1.0, 'PSNR': 22.0, 'SAM': 0.9, 'SSIM': 0.1}
+    }
+    plot_lulc_metrics(metrics_data)
+    """
+    dw_colors = ['#000000',  # -1 as black (unused here unless you have class -1)
+                 '#419bdf',  # 0
+                 '#397d49',  # 1
+                 '#88b053',  # 2
+                 '#7a87c6',  # 3
+                 '#e49635',  # 4
+                 '#dfc35a',  # 5
+                 '#c4281b',  # 6
+                 '#a59b8f',  # 7
+                 '#b39fe1']  # 8
+
+    # Prepare the figure and subplots
+    fig, axs = plt.subplots(1, 5, figsize=(20, 5), sharex=True, dpi=dpi)
+
+    # Ensure the order of metrics is consistent across subplots
+    metric_order = ['MAE', 'RMSE', 'PSNR', 'SAM', 'SSIM']
+
+    # Collect data for each metric to plot
+    class_indices = sorted(metrics_data.keys())
+    for ax, metric in zip(axs, metric_order):
+        values = [metrics_data[cls].get(metric, float('nan')) for cls in class_indices]
+        ax.bar(class_indices, values,
+               color=[dw_colors[cls + 1] for cls in class_indices])  # cls + 1 to match the colors
+        ax.set_title(metric)
+        ax.set_xlabel('Class')
+        ax.set_ylabel('Score')
+        ax.set_xticks(class_indices)
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 def cloud_mask_threshold(cloud_prob_map, threshold=30):
     """Create a binary cloud mask based on the cloud probability map and a threshold."""
     cloud_mask = cloud_prob_map > threshold

@@ -107,7 +107,7 @@ class CRDataset(Dataset):
         target_lulc_label = target_metadata["lulc"]
         with rs.open(target_metadata["DW File Path"]) as src:
             target_lulc_map = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
-        target_lulc_map = torch.from_numpy(target_lulc_map).float().unsqueeze(0).unsqueeze(0)
+        target_lulc_map = torch.from_numpy(target_lulc_map).float().unsqueeze(0)
 
         # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
         input_images = []

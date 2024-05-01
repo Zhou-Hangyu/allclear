@@ -417,7 +417,7 @@ class SinusoidalPositionalEmbedding_CustomToken(nn.Module):
         
         # The user would manual set the position before forwarding, it is set to None for initialization
         # self.position = None
-        self.position = nn.Parameter(torch.zeros(1, 12).float(), requires_grad=True)
+        self.position = nn.Parameter(torch.zeros(1, 10).float(), requires_grad=True)
 
     def forward(self, x):
 

@@ -4,8 +4,13 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
-sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
+if "ck696" in os.getcwd():
+    sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
+    sys.path.append("/share/hariharan/ck696/allclear/baselines")
+    sys.path.append("/share/hariharan/ck696/allclear")
+else:
+    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
+    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
 def s2_boa2toa(s2_boa):
     """Cast Sentinel-2 Bottom of Atmosphere (BOA) data to the shape of Top of Atmosphere (TOA) data.
@@ -214,7 +219,7 @@ class Simple3DUnet(BaseModel):
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
 
-        self.config = self.get_config()  # bug
+        self.get_config(args)  # bug
         self.model = self.get_model().to(self.device)
         self.model.eval()
 
@@ -227,46 +232,71 @@ class Simple3DUnet(BaseModel):
 
         down_block_dict = {"C": "DownBlock3D", "A": "CrossAttnDownBlock3D", "J": "DownBlockJust2D", "R": "CrossAttnDownBlock2D1D"}
         up_block_dict = {"C": "UpBlock3D", "A": "CrossAttnUpBlock3D", "J": "UpBlockJust2D", "R": "CrossAttnUpBlock2D1D"}
-        down_block_list = [down_block_dict[b] for b in self.config.model_blocks]
-        up_block_list = [up_block_dict[b] for b in self.config.model_blocks][::-1]
+        down_block_list = [down_block_dict[b] for b in self.model_blocks]
+        up_block_list = [up_block_dict[b] for b in self.model_blocks][::-1]
 
         model = UNet3DConditionModel(
-            sample_size=self.config.image_size,  # the target image resolution
-            in_channels=self.config.in_channel,  # the number of input channels, 3 for RGB images
-            out_channels=self.config.out_channel,  # the number of output channels
-            layers_per_block=self.config.LPB,  # how many ResNet layers to use per UNet block
-            block_out_channels=(128, 128, 256, self.config.max_dim, self.config.max_dim, self.config.max_dim, self.config.max_dim)[:len(self.config.model_blocks)],  # the number of output channels for each UNet block
+            sample_size=self.image_size,  # the target image resolution
+            in_channels=self.in_channel,  # the number of input channels, 3 for RGB images
+            out_channels=self.out_channel,  # the number of output channels
+            layers_per_block=1,  # how many ResNet layers to use per UNet block
+            block_out_channels=(128, 128, 256, self.max_dim, self.max_dim, self.max_dim, self.max_dim)[:len(self.model_blocks)],  # the number of output channels for each UNet block
             down_block_types=down_block_list,  # the down block sequence
             up_block_types=up_block_list,  # the up block sequence
-            norm_num_groups=self.config.norm_num_groups,  # the number of groups for normalization
+            norm_num_groups=self.num_groups,  # the number of groups for normalization
         )
 
-        PATH = "/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_12.pt"
-        model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
+        params = torch.load(self.checkpoint, map_location=torch.device('cpu'))
+        for key in params.keys():
+            if "custom_pos_embed.position" in key: break
+        params_pos_length = params[key].size(1)
+        self.update_model_position_token(model, self.compute_day_differences(torch.zeros((1,params_pos_length))))
+        model.load_state_dict(params, strict=False)
         model.eval()
 
         return model
 
-    def get_config(self):
+    def get_config(self, args):
 
-        class Args:
-            image_size = 256
-            in_channel = 12
-            out_channel = 3
-            LPB = 1
-            max_dim = 512
-            model_blocks = 'CRRAAA'
-            cross_attention_dim = 32
-            norm_num_groups = 4
-
-        config = Args()
-        return config
+        self.batch_size = args.batch_size
+        self.image_size = args.su_image_size
+        self.in_channel = args.su_in_channel
+        self.out_channel = args.su_out_channel
+        self.max_dim = args.su_max_dim
+        self.model_blocks = args.su_model_blocks
+        self.num_groups = args.su_num_groups
+        self.checkpoint = args.su_checkpoint
 
     def preprocess(self, inputs):
+
+        assert self.args.eval_mode == "sr"
+
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
         inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
         inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
+
+        # for key in inputs:
+        #     print(key, inputs[key].shape)
+
+        """
+        input_images: [1, 3, 14, 256, 256],
+            - the 13 and 14th bands are no use
+            - change from [B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B11, B12]
+            - change from [B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, _, B11, B12, _, _]
+        """
+
+        bs =  inputs["input_images"].shape[0]
+        input_imgs_placeholder = torch.zeros((bs, 3, 15, 256, 256)).to(self.device)
+        input_imgs_placeholder[:, :, :10] = inputs["input_images"][:, :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+        input_imgs_placeholder[:, :, 11:13] = inputs["input_images"][:, :, [10, 11]]
+        inputs["input_images"] = input_imgs_placeholder
+
+        target_placeholder = torch.zeros((bs, 1, 13, 256, 256)).to(self.device)
+        target_placeholder[:, :, :10] = inputs["target"][:, :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+        target_placeholder[:, :, 11:13] = inputs["target"][:, :, [10, 11]]
+        inputs["target"] = target_placeholder
+
         return inputs
     
     def compute_day_differences(self, timestamps):
@@ -300,39 +330,23 @@ class Simple3DUnet(BaseModel):
         # Input transformation
         input_imgs = inputs["input_images"] * 2 - 1
         input_imgs = input_imgs.permute(0, 2, 1, 3, 4)
-        input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12, 12, 12]]
-        input_imgs[:, -2:] = -1
+        # input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12, 12, 12]]
+        # input_imgs[:, -2:] = -1
         input_imgs = input_imgs.to(self.device)
 
-        length = 6
+        
+        input_buffer = torch.ones((BS, 15, 4, H, W)).to(self.device) * -1
+        input_buffer[:, :, :3] = input_imgs
 
-        if length == 12:
-            input_buffer = torch.ones((BS, 12, length, H, W)).to(self.device) * -1
-            input_buffer[:, :, :3] = input_imgs
-
-            # Update day counts and day token
-            # day_counts = self.compute_day_differences(inputs["timestamps"])
-            day_counts = torch.arange(length).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
-
-        elif length == 6:
-            input_buffer = torch.ones((BS, 12, length, H, W)).to(self.device) * -1
-            input_buffer[:, :, :3] = input_imgs
-            # input_buffer[:, :, 3:6] = input_imgs
-
-            # Update day counts and day token
-            # day_counts = self.compute_day_differences(inputs["timestamps"])'
-            # Day_counts [BS, T]
-            day_counts = torch.arange(length).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
+        day_counts = torch.arange(4).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
 
         self.update_model_position_token(self.model, day_counts)
-        emb = torch.zeros((self.args.batch_size, 2, 1024)).to(self.args.device)
+        emb = torch.zeros((BS, 2, 1024)).to(self.args.device)
 
         with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.float16):
-                # print(input_buffer.shape, emb.shape)
                 prediction = self.model(input_buffer, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-        prediction = torch.flip(prediction[:, :, 3], dims=[1])
-        # print(prediction.shape)
+        prediction = prediction[:, :, 3:4].permute(0, 2, 1, 3, 4).float()
 
         # # save prediction and input_imgs, and targets results in numpy format
         # self.args.res_dir = "/share/hariharan/ck696/Decloud/UNet/results/test_buffer"
@@ -342,7 +356,9 @@ class Simple3DUnet(BaseModel):
         # np.save(f"{self.args.res_dir}/input_buffer.npy", input_buffer.cpu().numpy())
         # np.save(f"{self.args.res_dir}/targets.npy", inputs["target"].cpu().numpy())
         # # print min max of prediction and input_buffer
+        # print(f"Input_imgs min: {inputs["input_images"].min()}, max: {inputs["input_images"].max()}")
         # print(f"Prediction min: {prediction.min()}, max: {prediction.max()}")
+
         # print(f"Input buffer min: {input_buffer.min()}, max: {input_buffer.max()}")
         # assert 0 == 1
 

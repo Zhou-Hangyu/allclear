@@ -3,13 +3,8 @@ import logging
 import torch
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torch.autograd import Variable
-from math import exp
 from tqdm import tqdm
 import sys
-
-# import lpips
-# from pytorch_msssim import ssim, ms_ssim
 
 
 sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model")
@@ -29,8 +24,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 class Metrics:
-    def __init__(self, args, outputs, targets, masks):
-        self.device = torch.device(args.device)
+    def __init__(self, outputs, targets, masks, device=torch.device("cpu")):
+        self.device = torch.device(device)
         self.outputs = outputs.to(self.device)
         self.targets = targets.to(self.device)
         self.masks = masks.to(self.device)
@@ -80,7 +75,7 @@ class Metrics:
         norm_out = F.normalize(self.outputs, p=2, dim=2)
         norm_tar = F.normalize(self.targets, p=2, dim=2)
         dot_product = (norm_out * norm_tar).sum(2).clamp(-1, 1)
-        angles = torch.acos(dot_product)
+        angles = torch.rad2deg(torch.acos(dot_product))
         angles_masked = angles.unsqueeze(2) * self.masks
         angles_sum = angles_masked.sum(dim=[-2, -1])
         mask_sum = self.masks.sum(dim=[-2, -1])
@@ -88,98 +83,69 @@ class Metrics:
         mean_sam = angles_mean.mean()
         return mean_sam
 
-    # @staticmethod
-    # def ssim(output, target, mask=None, data_range=1.0):
-    #     if mask is None:
-    #         raise ValueError("Mask is required for SSIM calculation")
-    #     masked_output = output * mask
-    #     masked_target = target * mask
-    #     return ssim(masked_output, masked_target, data_range=data_range, size_average=True)
+    def ssim(self, window_size=11, k1=0.01, k2=0.03, C1=None, C2=None):
+        if self.masks is None:
+            raise ValueError("Mask is required for SSIM calculation")
 
-    def gaussian(self, window_size, sigma):
-        """Create a 1D Gaussian window."""
-        gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
-        return gauss / gauss.sum()
+        # Default C1 and C2 values
+        L = 1  # L: dynamic range of the pixel-values (1 for normalized images)
+        if C1 is None:
+            C1 = (k1 * L) ** 2
+        if C2 is None:
+            C2 = (k2 * L) ** 2
 
-    def create_window(self, window_size, channel):
-        """Create a 2D Gaussian window."""
-        _1D_window = self.gaussian(window_size, 1.5).unsqueeze(1)
-        _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
-        window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
-        return window
+        def gaussian_window(size, sigma):
+            coords = torch.arange(size, dtype=torch.float32, device=self.device)
+            coords -= size // 2
+            g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+            g /= g.sum()
+            return g.view(1, 1, -1) * g.view(1, -1, 1)
 
-    def ssim(self, img1, img2, mask, size_average=True):
-        """Compute the SSIM index between two images.
-        Reference: https://github.com/Po-Hsun-Su/pytorch-ssim
-        """
-        if img1.size() != img2.size():
-            raise ValueError("Input images must have the same dimensions.")
+        outputs = self.outputs.view(-1, *self.outputs.shape[2:])
+        targets = self.targets.view(-1, *self.targets.shape[2:])
+        masks = self.masks.view(-1, *self.masks.shape[2:])
 
-        (_, _, channel, _, _) = img1.size()
-        if channel != self.channel:
-            self.channel = channel
-            self.window = self.create_window(self.window_size, self.channel)
-            self.window = self.window.type_as(img1).to(img1.device)
+        # Create a gaussian kernel, applied to each channel separately
+        window = gaussian_window(window_size, 1.5).repeat(outputs.shape[1], 1, 1, 1)
 
-        # Apply mask to images
-        img1 = img1 * mask
-        img2 = img2 * mask
+        masks = masks > 0.5
 
-        # Preparing the SSIM window
-        window = self.window.expand(img1.size(0), channel, self.window_size, self.window_size).contiguous()
+        # Compute SSIM over masked regions
+        mu_x = F.conv2d(outputs * masks, window, padding=window_size // 2, groups=outputs.shape[1])
+        mu_y = F.conv2d(targets * masks, window, padding=window_size // 2, groups=targets.shape[1])
+        sigma_x = F.conv2d(outputs ** 2 * masks, window, padding=window_size // 2,
+                           groups=outputs.shape[1])
+        sigma_y = F.conv2d(targets ** 2 * masks, window, padding=window_size // 2,
+                           groups=targets.shape[1])
+        sigma_xy = F.conv2d(outputs * targets * masks, window, padding=window_size // 2,
+                            groups=outputs.shape[1])
 
-        # SSIM calculation
-        mu1 = F.conv2d(img1.view(-1, *img1.shape[-3:]), window, padding=self.window_size // 2, groups=channel)
-        mu2 = F.conv2d(img2.view(-1, *img2.shape[-3:]), window, padding=self.window_size // 2, groups=channel)
-        sigma1_sq = F.conv2d(img1 * img1, window, padding=self.window_size // 2, groups=channel) - mu1.pow(2)
-        sigma2_sq = F.conv2d(img2 * img2, window, padding=self.window_size // 2, groups=channel) - mu2.pow(2)
-        sigma12 = F.conv2d(img1 * img2, window, padding=self.window_size // 2, groups=channel) - mu1 * mu2
+        mu_x_sq = mu_x ** 2
+        mu_y_sq = mu_y ** 2
+        mu_xy = mu_x * mu_y
 
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
+        sigma_x -= mu_x_sq
+        sigma_y -= mu_y_sq
+        sigma_xy -= mu_xy
 
-        ssim_map = ((2 * mu1 * mu2 + C1) * (2 * sigma12 + C2)) / ((mu1.pow(2) + mu2.pow(2) + C1) * (sigma1_sq + sigma2_sq + C2))
+        numerator = (2 * mu_xy + C1) * (2 * sigma_xy + C2)
+        denominator = (mu_x_sq + mu_y_sq + C1) * (sigma_x + sigma_y + C2)
 
-        if size_average:
-            return ssim_map.mean()
-        else:
-            return ssim_map.view(img1.size(0), img1.size(1), -1).mean(2)
+        ssim_map = numerator / denominator
+        ssim_map_masked = torch.where(masks, ssim_map, torch.tensor(float('nan'), device=self.device))
+        mean_ssim = torch.nanmean(ssim_map_masked, dim=[2, 3])
+        return mean_ssim.mean()
 
-
-
-    def lpips(self, output, target, mask=None):
-        if mask is None:
-            raise ValueError("Mask is required for LPIPS calculation")
-        valid = mask > 0.5
-        valid = valid.expand_as(output)
-
-        if valid.any():
-            valid_output = output * valid
-            valid_target = target * valid
-            return self.lpips_loss_fn(valid_output[0,0], valid_target[0,0]).mean()
-        else:
-            return torch.tensor(float('nan'))
 
     def evaluate(self, psnr_max=1.0):
+        print(f"Evaluating Metrics using {self.device}...")
         return {
             "MAE": self.mae(),
             "RMSE": self.rmse(),
             "PSNR": self.psnr(max_pixel=psnr_max),
             "SAM": self.sam(),
-            # "SSIM": self.ssim(output, target, mask),
-            # "LPIPS": self.lpips(output, target, mask)
+            "SSIM": self.ssim(),
         }
-
-#
-#
-# from torch.utils.data.dataloader import default_collate
-# def custom_collate_fn(batch):
-#     # Filter out all None values
-#     filtered_batch = [b for b in batch if b is not None]
-#     if len(filtered_batch) == 0:
-#         return None  # or handle this scenario appropriately
-#     return default_collate(filtered_batch)
-
 
 class BenchmarkEngine:
     def __init__(self, args):
@@ -205,11 +171,9 @@ class BenchmarkEngine:
         dataset = CRDataset(
             self.args.data_path, self.args.metadata_path, self.args.selected_rois, self.args.time_span, self.args.eval_mode, self.args.cloud_percentage_range
         )
-        # return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers, collate_fn=custom_collate_fn, drop_last=True)
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
 
     def run(self):
-        metrics = Metrics(self.args)
         outputs_all = []
         targets_all = []
         target_masks_all = []
@@ -238,24 +202,17 @@ class BenchmarkEngine:
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
 
-        # Remove B10 from the outputs and targets for evaluation
-        # toa_no_b10 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
-        # outputs = outputs[:, :, toa_no_b10, :, :]
-        # targets = targets[:, :, toa_no_b10, :, :]
-        targets = targets[:, :, self.args.eval_bands, :, :]
+        metrics = Metrics(outputs, targets, masks)
+        results = metrics.evaluate()
+        print(results)
 
-        # evaluation_results = metrics.evaluate(outputs, targets, masks)
-        # print(evaluation_results)
-        # def eval_step(engine, batch):
-        #     return batch
-        #
-        # default_evaluator = Engine(eval_step)
-        # metric = SSIM(data_range=1.0)
-        # metric.attach(default_evaluator, 'ssim')
-        # print(outputs.flatten(0,1).shape)
-        # state = default_evaluator.run([[outputs.flatten(0,1), targets.flatten(0,1)]])
-        # print(state.metrics['ssim'])
+        # Remove B10 from the outputs and targets for evaluation
+        # targets = targets[:, :, self.args.eval_bands, :, :]
+        self.cleanup()
         return outputs, targets, masks
+
+    def cleanup(self):
+        pass
 
     def save_results(self, output, target, timestamp, res_dir):
         pass

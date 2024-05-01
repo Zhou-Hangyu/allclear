@@ -23,26 +23,68 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 class Metrics:
-    def __init__(self, outputs, targets, masks, device=torch.device("cuda"), batch_size=32):
+    def __init__(self, outputs, targets, masks, lulc=None, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
         self.device = torch.device(device)
         self.outputs = outputs.view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
         self.targets = targets.view(-1, *targets.shape[2:])
         self.masks = masks.view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
+        self.lulc = lulc if lulc is not None else None
+        if lulc_maps is not None:
+            self.lulc_maps = lulc_maps.view(-1, *lulc_maps.shape[2:])
+            self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
         self.batch_size = batch_size
 
-        print(f"Evaluating Metrics using {self.device}...")
-        self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.batch_process()
+        print(f"Evaluating Masked Metrics using {self.device}...")
+        self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.batch_process(self.masks)
 
-    def batch_process(self):
+    def evaluate_aggregate(self):
+        return {
+            "MAE": self.maes.nanmean().item(),
+            "RMSE": self.rmses.nanmean().item(),
+            "PSNR": self.psnrs.nanmean().item(),
+            "SAM": self.sams.nanmean().item(),
+            "SSIM": self.ssims.nanmean().item(),
+        }
+
+    def evaluate_strat_lulc(self, mode="map"):
+        """mode can be 'map' or 'label'"""
+        lulc_metrics = {}
+        num_classes = 9
+        for c in range(num_classes):
+            if mode == "map":
+                mask = self.masked_lulc_maps == c
+                metrics = self.batch_process(mask)
+                lulc_metrics[c] = {
+                    "MAE": metrics[0].nanmean().item(),
+                    "RMSE": metrics[1].nanmean().item(),
+                    "PSNR": metrics[2].nanmean().item(),
+                    "SAM": metrics[3].nanmean().item(),
+                    "SSIM": metrics[4].nanmean().item(),
+                }
+            elif mode == "label":
+                lulc_c = self.lulc == c
+                lulc_metrics[c] = {
+                    "MAE": self.maes[lulc_c].nanmean().item(),
+                    "RMSE": self.rmses[lulc_c].nanmean().item(),
+                    "PSNR": self.psnrs[lulc_c].nanmean().item(),
+                    "SAM": self.sams[lulc_c].nanmean().item(),
+                    "SSIM": self.ssims[lulc_c].nanmean().item(),
+                }
+            else:
+                raise ValueError(f"Invalid mode: {mode}")
+        return lulc_metrics
+
+
+    def batch_process(self, masks):
         num_batches = (self.outputs.shape[0] + self.batch_size - 1) // self.batch_size
         maes, rmses, psnrs, sams, ssims = [], [], [], [], []
 
-        for i in range(num_batches):
+        for i in tqdm(range(num_batches), desc="Processing batches"):
             start = i * self.batch_size
             end = min((i + 1) * self.batch_size, self.outputs.shape[0])
             batch_outputs = self.outputs[start:end].to(self.device)
             batch_targets = self.targets[start:end].to(self.device)
-            batch_masks = self.masks[start:end].to(self.device)
+            batch_masks = masks[start:end].to(self.device)
 
             maes.append(self.mae(batch_outputs, batch_targets, batch_masks))
             rmses.append(self.rmse(batch_outputs, batch_targets, batch_masks))
@@ -158,33 +200,6 @@ class Metrics:
         ssims = torch.nanmean(ssim_map_masked, dim=[-3, -2, -1])
         return ssims
 
-
-    def evaluate_aggregate(self):
-        return {
-            "MAE": self.maes.mean().item(),
-            "RMSE": self.rmses.mean().item(),
-            "PSNR": self.psnrs.mean().item(),
-            "SAM": self.sams.mean().item(),
-            "SSIM": self.ssims.mean().item(),
-        }
-
-    def evaluate_stratified(self, lulc):
-        metrics_per_class = {
-            "MAE": self._per_class_metric(self.maes, lulc),
-            "RMSE": self._per_class_metric(self.rmses, lulc),
-            "PSNR": self._per_class_metric(self.psnrs, lulc),
-            "SAM": self._per_class_metric(self.sams, lulc),
-            "SSIM": self._per_class_metric(self.ssims, lulc),
-        }
-        return metrics_per_class
-
-    @staticmethod
-    def _per_class_metric(metric_values, lulc):
-        metric_per_class = []
-        for i in range(9):  # Assuming 9 classes
-            mask = lulc == i
-            metric_per_class.append(metric_values[mask].mean().item())
-        return metric_per_class
 
 class BenchmarkEngine:
     def __init__(self, args):

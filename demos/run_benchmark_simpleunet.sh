@@ -13,20 +13,9 @@ NUM_WORKERS=2
 DEVICE="cuda:0"
 EVAL_MODE="sr"
 
-#MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
-#SELECTED_ROIS='0 1 14 29'
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
-SELECTED_ROIS='0 1' # 13 test rois from sen12ms-cr-ts
-#SELECTED_ROIS="29"
+# SELECTED_ROIS='0 1' # 13 test rois from sen12ms-cr-ts
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/init"
-EVAL_BANDS="3 2 1"
-
-# v36
-# SU_MODEL_BLOCKS="CRRAAA"
-# SU_MAX_DIM=512
-# SU_IN_CHANNEL=12
-# SU_OUT_CHANNEL=3
-# SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v45_0426_I12O3T12_BlcCRRAAA_LR2e_05_LPB1_GNorm4_MaxDim512_NoTimePerm/model_12.pt"
 
 # v37 - 1
 SU_MODEL_BLOCKS="CCRRAA"
@@ -39,14 +28,14 @@ SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O1
 SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_12.pt" # 27.60738754272461, 'SAM': 14.049606323242188, 'SSIM': 0.8761096596717834}
 
 # v37 - 2
-SU_MODEL_BLOCKS="CCRAA"
-SU_MAX_DIM=512
-SU_IN_CHANNEL=15
-SU_OUT_CHANNEL=13
-SU_NUM_GROUPS=4
-SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_6.pt"   # 'PSNR': 28.134485244750977, 'SAM': 14.032394409179688, 'SSIM': 0.8759791254997253}
-SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_8.pt"   # 'PSNR': 28.134485244750977, 'SAM': 14.032394409179688, 'SSIM': 0.8759791254997253}
-SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_10.pt"   # 'PSNR': 28.134485244750977, 'SAM': 14.032394409179688, 'SSIM': 0.8759791254997253}
+# SU_MODEL_BLOCKS="CCRAA"
+# SU_MAX_DIM=512
+# SU_IN_CHANNEL=15
+# SU_OUT_CHANNEL=13
+# SU_NUM_GROUPS=4
+# SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_6.pt"   # 
+# SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_8.pt"   # 'PSNR': 26.966876983642578, 'SAM': 14.515852928161621, 'SSIM': 0.8663498163223267}
+# SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_10.pt"   # ''PSNR': 26.496280670166016, 'SAM': 14.250154495239258, 'SSIM': 0.8716974258422852}
 # SU_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_13.pt"   # 'PSNR': 28.134485244750977, 'SAM': 14.032394409179688, 'SSIM': 0.8759791254997253}
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"

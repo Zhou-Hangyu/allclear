@@ -246,7 +246,12 @@ class Simple3DUnet(BaseModel):
             norm_num_groups=self.num_groups,  # the number of groups for normalization
         )
 
-        model.load_state_dict(torch.load(self.checkpoint, map_location=torch.device('cpu')))
+        params = torch.load(self.checkpoint, map_location=torch.device('cpu'))
+        for key in params.keys():
+            if "custom_pos_embed.position" in key: break
+        params_pos_length = params[key].size(1)
+        self.update_model_position_token(model, self.compute_day_differences(torch.zeros((1,params_pos_length))))
+        model.load_state_dict(params, strict=False)
         model.eval()
 
         return model

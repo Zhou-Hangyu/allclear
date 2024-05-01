@@ -16,6 +16,7 @@ DEVICE="cuda:0"
 #SELECTED_ROIS='0 1 14 29'
 #SELECTED_ROIS='0 1 14 29 31 34 35 37 38'
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
+#SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52 56 65 71 80 83' # 18 test rois from both sen12ms-cr-ts and sen12ms-cr
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init"
 #EVAL_MODE='sr'
 EVAL_MODE='toa'

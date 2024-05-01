@@ -18,11 +18,6 @@ from baselines.UnCRtainTS.model.parse_args import create_parser
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-
-
-
-
-
 class Metrics:
     def __init__(self, outputs, targets, masks, device=torch.device("cpu")):
         self.device = torch.device(device)
@@ -180,12 +175,16 @@ class BenchmarkEngine:
         outputs_all = []
         targets_all = []
         target_masks_all = []
+        target_lulc_labels = []
+        target_lulc_maps = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
             with torch.no_grad():
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
                 target_mask = 1 - data["target_cloud_mask"].cpu() # negate to get non-cloud mask
                 target_masks_all.append(target_mask)
+                target_lulc_labels.append(data["target_lulc_label"].cpu())
+                target_lulc_maps.append(data["target_lulc_map"].cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
                 # save results
@@ -204,6 +203,8 @@ class BenchmarkEngine:
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
+        lulc_labels = torch.cat(target_lulc_labels, dim=0)
+        lulc_maps = torch.cat(target_lulc_maps, dim=0)
 
         metrics = Metrics(outputs, targets, masks)
         results = metrics.evaluate_aggregate()
@@ -212,7 +213,7 @@ class BenchmarkEngine:
         # Remove B10 from the outputs and targets for evaluation
         # targets = targets[:, :, self.args.eval_bands, :, :]
         self.cleanup()
-        return outputs, targets, masks
+        return outputs, targets, masks, lulc_labels, lulc_maps
 
     def cleanup(self):
         pass

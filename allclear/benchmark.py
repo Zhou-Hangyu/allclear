@@ -204,10 +204,16 @@ class BenchmarkEngine:
                     # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
                     continue
 
-
+        print(f"outputs shape: {outputs_all[0].shape}")
+        print(f"targets shape: {targets_all[0].shape}")
+        print(f"mask shape: {target_masks_all[0].shape}")
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
+
+        print(f"Outputs Shape: {outputs.shape}")
+        print(f"Targets Shape: {targets.shape}")
+        print(f"Masks Shape: {masks.shape}")
 
         metrics = Metrics(outputs, targets, masks)
         results = metrics.evaluate_aggregate()
@@ -258,7 +264,7 @@ def parse_arguments():
     su_args.add_argument("--su-out-channel", type=int, default=3, help="Output channels for Simple3DUnet")
     su_args.add_argument("--su-max-dim", type=int, default=512, help="Max dimension for Simple3DUnet")
     su_args.add_argument("--su-model-blocks", type=str, default="CRRAAA", help="Model blocks for Simple3DUnet")
-    su_args.add_argument("--su-norm-num-groups", type=int, default=4, help="Number of groups for normalization in Simple3DUnet")
+    su_args.add_argument("--su-num-groups", type=int, default=4, help="Number of groups for normalization in Simple3DUnet")
     su_args.add_argument("--su-checkpoint", type=str, help="Checkpoint for Simple3DUnet")
 
     args = parser.parse_args()

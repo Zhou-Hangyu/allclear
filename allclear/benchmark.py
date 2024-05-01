@@ -26,9 +26,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 class Metrics:
     def __init__(self, outputs, targets, masks, device=torch.device("cpu")):
         self.device = torch.device(device)
-        self.outputs = outputs.to(self.device)
-        self.targets = targets.to(self.device)
-        self.masks = masks.to(self.device)
+        self.outputs = outputs.to(self.device).view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
+        self.targets = targets.to(self.device).view(-1, *targets.shape[2:])
+        self.masks = masks.to(self.device).view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
+
+        print(f"Evaluating Metrics using {self.device}...")
+        self.maes = self.mae()
+        self.rmses = self.rmse()
+        self.psnrs = self.psnr()
+        self.sams = self.sam()
+        self.ssims = self.ssim()
 
     def mae(self):
         if self.masks is None:
@@ -36,11 +43,10 @@ class Metrics:
         output_masked = self.outputs * self.masks
         target_masked = self.targets * self.masks
         mae_masked = F.l1_loss(output_masked, target_masked, reduction='none') * self.masks
-        mae_masked_sum = mae_masked.sum(dim=[3, 4])
-        mask_sum = self.masks.sum(dim=[3, 4])
-        mae_masked_mean = mae_masked_sum / mask_sum
-        mean_mae = mae_masked_mean.mean()
-        return mean_mae
+        mae_masked_sum = mae_masked.sum(dim=[-3, -2, -1])
+        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        maes = mae_masked_sum / mask_sum
+        return maes
 
     def rmse(self):
         if self.masks is None:
@@ -48,12 +54,11 @@ class Metrics:
         output_masked = self.outputs * self.masks
         target_masked = self.targets * self.masks
         mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
-        mse_masked_sum = mse_masked.sum(dim=[3, 4])
-        mask_sum = self.masks.sum(dim=[3, 4])
+        mse_masked_sum = mse_masked.sum(dim=[-3, -2, -1])
+        mask_sum = self.masks.sum(dim=[-3, -2, -1])
         mse_masked_mean = mse_masked_sum / mask_sum
-        rmse_masked = torch.sqrt(mse_masked_mean)
-        mean_rmse = rmse_masked.mean()
-        return mean_rmse
+        rmses = torch.sqrt(mse_masked_mean)
+        return rmses
 
 
     def psnr(self, max_pixel=1.0):
@@ -62,12 +67,11 @@ class Metrics:
         output_masked = self.outputs * self.masks
         target_masked = self.targets * self.masks
         mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
-        mse_masked_sum = mse_masked.sum(dim=[3, 4])
-        mask_sum = self.masks.sum(dim=[3, 4])
+        mse_masked_sum = mse_masked.sum(dim=[-3, -2, -1])
+        mask_sum = self.masks.sum(dim=[-3, -2, -1])
         mse_masked_mean = mse_masked_sum / mask_sum
-        psnr_masked = 20 * torch.log10(max_pixel / torch.sqrt(mse_masked_mean))
-        mean_psnr = psnr_masked.mean()
-        return mean_psnr
+        psnrs = 20 * torch.log10(max_pixel / torch.sqrt(mse_masked_mean))
+        return psnrs
 
     def sam(self):
         if self.masks is None:
@@ -77,11 +81,10 @@ class Metrics:
         dot_product = (norm_out * norm_tar).sum(2).clamp(-1, 1)
         angles = torch.rad2deg(torch.acos(dot_product))
         angles_masked = angles.unsqueeze(2) * self.masks
-        angles_sum = angles_masked.sum(dim=[-2, -1])
-        mask_sum = self.masks.sum(dim=[-2, -1])
-        angles_mean = angles_sum / mask_sum
-        mean_sam = angles_mean.mean()
-        return mean_sam
+        angles_sum = angles_masked.sum(dim=[-3, -2, -1])
+        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        sams = angles_sum / mask_sum
+        return sams
 
     def ssim(self, window_size=11, k1=0.01, k2=0.03, C1=None, C2=None):
         if self.masks is None:
@@ -101,24 +104,22 @@ class Metrics:
             g /= g.sum()
             return g.view(1, 1, -1) * g.view(1, -1, 1)
 
-        outputs = self.outputs.view(-1, *self.outputs.shape[2:])
-        targets = self.targets.view(-1, *self.targets.shape[2:])
-        masks = self.masks.view(-1, *self.masks.shape[2:])
+
 
         # Create a gaussian kernel, applied to each channel separately
-        window = gaussian_window(window_size, 1.5).repeat(outputs.shape[1], 1, 1, 1)
+        window = gaussian_window(window_size, 1.5).repeat(self.outputs.shape[1], 1, 1, 1)
 
-        masks = masks > 0.5
+        masks = self.masks > 0.5
 
         # Compute SSIM over masked regions
-        mu_x = F.conv2d(outputs * masks, window, padding=window_size // 2, groups=outputs.shape[1])
-        mu_y = F.conv2d(targets * masks, window, padding=window_size // 2, groups=targets.shape[1])
-        sigma_x = F.conv2d(outputs ** 2 * masks, window, padding=window_size // 2,
-                           groups=outputs.shape[1])
-        sigma_y = F.conv2d(targets ** 2 * masks, window, padding=window_size // 2,
-                           groups=targets.shape[1])
-        sigma_xy = F.conv2d(outputs * targets * masks, window, padding=window_size // 2,
-                            groups=outputs.shape[1])
+        mu_x = F.conv2d(self.outputs * masks, window, padding=window_size // 2, groups=self.outputs.shape[1])
+        mu_y = F.conv2d(self.targets * masks, window, padding=window_size // 2, groups=self.targets.shape[1])
+        sigma_x = F.conv2d(self.outputs ** 2 * masks, window, padding=window_size // 2,
+                           groups=self.outputs.shape[1])
+        sigma_y = F.conv2d(self.targets ** 2 * masks, window, padding=window_size // 2,
+                           groups=self.targets.shape[1])
+        sigma_xy = F.conv2d(self.outputs * self.targets * masks, window, padding=window_size // 2,
+                            groups=self.outputs.shape[1])
 
         mu_x_sq = mu_x ** 2
         mu_y_sq = mu_y ** 2
@@ -133,19 +134,21 @@ class Metrics:
 
         ssim_map = numerator / denominator
         ssim_map_masked = torch.where(masks, ssim_map, torch.tensor(float('nan'), device=self.device))
-        mean_ssim = torch.nanmean(ssim_map_masked, dim=[2, 3])
-        return mean_ssim.mean()
+        ssims = torch.nanmean(ssim_map_masked, dim=[-3, -2, -1])
+        return ssims
 
 
-    def evaluate(self, psnr_max=1.0):
-        print(f"Evaluating Metrics using {self.device}...")
+    def evaluate_aggregate(self):
         return {
-            "MAE": self.mae(),
-            "RMSE": self.rmse(),
-            "PSNR": self.psnr(max_pixel=psnr_max),
-            "SAM": self.sam(),
-            "SSIM": self.ssim(),
+            "MAE": self.maes.mean().item(),
+            "RMSE": self.rmses.mean().item(),
+            "PSNR": self.psnrs.mean().item(),
+            "SAM": self.sams.mean().item(),
+            "SSIM": self.ssims.mean().item(),
         }
+
+    def evaluate_stratified(self):
+        pass
 
 class BenchmarkEngine:
     def __init__(self, args):
@@ -203,7 +206,7 @@ class BenchmarkEngine:
         masks = torch.cat(target_masks_all, dim=0)
 
         metrics = Metrics(outputs, targets, masks)
-        results = metrics.evaluate()
+        results = metrics.evaluate_aggregate()
         print(results)
 
         # Remove B10 from the outputs and targets for evaluation

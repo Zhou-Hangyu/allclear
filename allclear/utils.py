@@ -56,6 +56,7 @@ def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
         ax.set_xlabel('Class')
         ax.set_ylabel('Score')
         ax.set_xticks(class_indices)
+        ax.grid(True)
 
     plt.tight_layout()
     if save_dir:

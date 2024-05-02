@@ -22,76 +22,135 @@ from baselines.UnCRtainTS.model.parse_args import create_parser
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-
-
-
-
-
 class Metrics:
-    def __init__(self, outputs, targets, masks, device=torch.device("cpu")):
+    def __init__(self, outputs, targets, masks, lulc=None, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
         self.device = torch.device(device)
-        self.outputs = outputs.to(self.device).view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
-        self.targets = targets.to(self.device).view(-1, *targets.shape[2:])
-        self.masks = masks.to(self.device).view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
+        self.outputs = outputs.view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
+        self.targets = targets.view(-1, *targets.shape[2:])
+        self.masks = masks.view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
+        self.lulc = lulc if lulc is not None else None
+        if lulc_maps is not None:
+            self.lulc_maps = lulc_maps.view(-1, *lulc_maps.shape[2:])
+            self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
+        self.batch_size = batch_size
 
-        print(f"Evaluating Metrics using {self.device}...")
-        self.maes = self.mae()
-        self.rmses = self.rmse()
-        self.psnrs = self.psnr()
-        self.sams = self.sam()
-        self.ssims = self.ssim()
+        print(f"Evaluating Masked Metrics using {self.device}...")
+        self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.batch_process(self.masks)
 
-    def mae(self):
-        if self.masks is None:
+    def evaluate_aggregate(self):
+        return {
+            "MAE": self.maes.nanmean().item(),
+            "RMSE": self.rmses.nanmean().item(),
+            "PSNR": self.psnrs.nanmean().item(),
+            "SAM": self.sams.nanmean().item(),
+            "SSIM": self.ssims.nanmean().item(),
+        }
+
+    def evaluate_strat_lulc(self, mode="map"):
+        """mode can be 'map' or 'label'"""
+        lulc_metrics = {}
+        num_classes = 9
+        for c in range(num_classes):
+            if mode == "map":
+                mask = self.masked_lulc_maps == c
+                metrics = self.batch_process(mask)
+                lulc_metrics[c] = {
+                    "MAE": metrics[0].nanmean().item(),
+                    "RMSE": metrics[1].nanmean().item(),
+                    "PSNR": metrics[2].nanmean().item(),
+                    "SAM": metrics[3].nanmean().item(),
+                    "SSIM": metrics[4].nanmean().item(),
+                }
+            elif mode == "label":
+                lulc_c = self.lulc == c
+                lulc_metrics[c] = {
+                    "MAE": self.maes[lulc_c].nanmean().item(),
+                    "RMSE": self.rmses[lulc_c].nanmean().item(),
+                    "PSNR": self.psnrs[lulc_c].nanmean().item(),
+                    "SAM": self.sams[lulc_c].nanmean().item(),
+                    "SSIM": self.ssims[lulc_c].nanmean().item(),
+                }
+            else:
+                raise ValueError(f"Invalid mode: {mode}")
+        return lulc_metrics
+
+
+    def batch_process(self, masks):
+        num_batches = (self.outputs.shape[0] + self.batch_size - 1) // self.batch_size
+        maes, rmses, psnrs, sams, ssims = [], [], [], [], []
+
+        for i in tqdm(range(num_batches), desc="Processing batches"):
+            start = i * self.batch_size
+            end = min((i + 1) * self.batch_size, self.outputs.shape[0])
+            batch_outputs = self.outputs[start:end].to(self.device)
+            batch_targets = self.targets[start:end].to(self.device)
+            batch_masks = masks[start:end].to(self.device)
+
+            maes.append(self.mae(batch_outputs, batch_targets, batch_masks))
+            rmses.append(self.rmse(batch_outputs, batch_targets, batch_masks))
+            psnrs.append(self.psnr(batch_outputs, batch_targets, batch_masks))
+            sams.append(self.sam(batch_outputs, batch_targets, batch_masks))
+            ssims.append(self.ssim(batch_outputs, batch_targets, batch_masks))
+
+        maes = torch.cat(maes, dim=0)
+        rmses = torch.cat(rmses, dim=0)
+        psnrs = torch.cat(psnrs, dim=0)
+        sams = torch.cat(sams, dim=0)
+        ssims = torch.cat(ssims, dim=0)
+
+        return maes, rmses, psnrs, sams, ssims
+
+    def mae(self, outputs, targets, masks):
+        if masks is None:
             raise ValueError("Mask is required for MAE calculation")
-        output_masked = self.outputs * self.masks
-        target_masked = self.targets * self.masks
-        mae_masked = F.l1_loss(output_masked, target_masked, reduction='none') * self.masks
+        output_masked = outputs * masks
+        target_masked = targets * masks
+        mae_masked = F.l1_loss(output_masked, target_masked, reduction='none') * masks
         mae_masked_sum = mae_masked.sum(dim=[-3, -2, -1])
-        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        mask_sum = masks.sum(dim=[-3, -2, -1])
         maes = mae_masked_sum / mask_sum
         return maes
 
-    def rmse(self):
-        if self.masks is None:
-            raise ValueError("Mask is required for RMSE calculation")
-        output_masked = self.outputs * self.masks
-        target_masked = self.targets * self.masks
-        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
+    def rmse(self, outputs, targets, masks):
+        if masks is None:
+            raise ValueError("Mask is required for MAE calculation")
+        output_masked = outputs * masks
+        target_masked = targets * masks
+        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * masks
         mse_masked_sum = mse_masked.sum(dim=[-3, -2, -1])
-        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        mask_sum = masks.sum(dim=[-3, -2, -1])
         mse_masked_mean = mse_masked_sum / mask_sum
         rmses = torch.sqrt(mse_masked_mean)
         return rmses
 
 
-    def psnr(self, max_pixel=1.0):
-        if self.masks is None:
-            raise ValueError("Mask is required for RMSE calculation")
-        output_masked = self.outputs * self.masks
-        target_masked = self.targets * self.masks
-        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * self.masks
+    def psnr(self, outputs, targets, masks, max_pixel=1.0):
+        if masks is None:
+            raise ValueError("Mask is required for MAE calculation")
+        output_masked = outputs * masks
+        target_masked = targets * masks
+        mse_masked = F.mse_loss(output_masked, target_masked, reduction='none') * masks
         mse_masked_sum = mse_masked.sum(dim=[-3, -2, -1])
-        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        mask_sum = masks.sum(dim=[-3, -2, -1])
         mse_masked_mean = mse_masked_sum / mask_sum
         psnrs = 20 * torch.log10(max_pixel / torch.sqrt(mse_masked_mean))
         return psnrs
 
-    def sam(self):
-        if self.masks is None:
+    def sam(self, outputs, targets, masks):
+        if masks is None:
             raise ValueError("Mask is required for SAM calculation")
-        norm_out = F.normalize(self.outputs, p=2, dim=2)
-        norm_tar = F.normalize(self.targets, p=2, dim=2)
+        norm_out = F.normalize(outputs, p=2, dim=2)
+        norm_tar = F.normalize(targets, p=2, dim=2)
         dot_product = (norm_out * norm_tar).sum(2).clamp(-1, 1)
         angles = torch.rad2deg(torch.acos(dot_product))
-        angles_masked = angles.unsqueeze(2) * self.masks
+        angles_masked = angles.unsqueeze(2) * masks
         angles_sum = angles_masked.sum(dim=[-3, -2, -1])
-        mask_sum = self.masks.sum(dim=[-3, -2, -1])
+        mask_sum = masks.sum(dim=[-3, -2, -1])
         sams = angles_sum / mask_sum
         return sams
 
-    def ssim(self, window_size=11, k1=0.01, k2=0.03, C1=None, C2=None):
-        if self.masks is None:
+    def ssim(self, outputs, targets, masks, window_size=11, k1=0.01, k2=0.03, C1=None, C2=None):
+        if masks is None:
             raise ValueError("Mask is required for SSIM calculation")
 
         # Default C1 and C2 values
@@ -111,19 +170,19 @@ class Metrics:
 
 
         # Create a gaussian kernel, applied to each channel separately
-        window = gaussian_window(window_size, 1.5).repeat(self.outputs.shape[1], 1, 1, 1)
+        window = gaussian_window(window_size, 1.5).repeat(outputs.shape[1], 1, 1, 1)
 
-        masks = self.masks > 0.5
+        masks = masks > 0.5
 
         # Compute SSIM over masked regions
-        mu_x = F.conv2d(self.outputs * masks, window, padding=window_size // 2, groups=self.outputs.shape[1])
-        mu_y = F.conv2d(self.targets * masks, window, padding=window_size // 2, groups=self.targets.shape[1])
-        sigma_x = F.conv2d(self.outputs ** 2 * masks, window, padding=window_size // 2,
-                           groups=self.outputs.shape[1])
-        sigma_y = F.conv2d(self.targets ** 2 * masks, window, padding=window_size // 2,
-                           groups=self.targets.shape[1])
-        sigma_xy = F.conv2d(self.outputs * self.targets * masks, window, padding=window_size // 2,
-                            groups=self.outputs.shape[1])
+        mu_x = F.conv2d(outputs * masks, window, padding=window_size // 2, groups=outputs.shape[1])
+        mu_y = F.conv2d(targets * masks, window, padding=window_size // 2, groups=targets.shape[1])
+        sigma_x = F.conv2d(outputs ** 2 * masks, window, padding=window_size // 2,
+                           groups=outputs.shape[1])
+        sigma_y = F.conv2d(targets ** 2 * masks, window, padding=window_size // 2,
+                           groups=targets.shape[1])
+        sigma_xy = F.conv2d(outputs * targets * masks, window, padding=window_size // 2,
+                            groups=outputs.shape[1])
 
         mu_x_sq = mu_x ** 2
         mu_y_sq = mu_y ** 2
@@ -141,18 +200,6 @@ class Metrics:
         ssims = torch.nanmean(ssim_map_masked, dim=[-3, -2, -1])
         return ssims
 
-
-    def evaluate_aggregate(self):
-        return {
-            "MAE": self.maes.mean().item(),
-            "RMSE": self.rmses.mean().item(),
-            "PSNR": self.psnrs.mean().item(),
-            "SAM": self.sams.mean().item(),
-            "SSIM": self.ssims.mean().item(),
-        }
-
-    def evaluate_stratified(self):
-        pass
 
 class BenchmarkEngine:
     def __init__(self, args):
@@ -184,12 +231,16 @@ class BenchmarkEngine:
         outputs_all = []
         targets_all = []
         target_masks_all = []
+        target_lulc_labels = []
+        target_lulc_maps = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
             with torch.no_grad():
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
                 target_mask = 1 - data["target_cloud_mask"].cpu() # negate to get non-cloud mask
                 target_masks_all.append(target_mask)
+                target_lulc_labels.append(data["target_lulc_label"].cpu())
+                target_lulc_maps.append(data["target_lulc_map"].cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
                 # save results
@@ -204,16 +255,18 @@ class BenchmarkEngine:
                     # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
                     continue
 
-        print(f"outputs shape: {outputs_all[0].shape}")
-        print(f"targets shape: {targets_all[0].shape}")
-        print(f"mask shape: {target_masks_all[0].shape}")
+        # print(f"outputs shape: {outputs_all[0].shape}")
+        # print(f"targets shape: {targets_all[0].shape}")
+        # print(f"mask shape: {target_masks_all[0].shape}")
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
+        lulc_labels = torch.cat(target_lulc_labels, dim=0)
+        lulc_maps = torch.cat(target_lulc_maps, dim=0)
 
-        print(f"Outputs Shape: {outputs.shape}")
-        print(f"Targets Shape: {targets.shape}")
-        print(f"Masks Shape: {masks.shape}")
+        # print(f"Outputs Shape: {outputs.shape}")
+        # print(f"Targets Shape: {targets.shape}")
+        # print(f"Masks Shape: {masks.shape}")
 
         metrics = Metrics(outputs, targets, masks)
         results = metrics.evaluate_aggregate()
@@ -222,7 +275,7 @@ class BenchmarkEngine:
         # Remove B10 from the outputs and targets for evaluation
         # targets = targets[:, :, self.args.eval_bands, :, :]
         self.cleanup()
-        return outputs, targets, masks
+        return outputs, targets, masks, lulc_labels, lulc_maps
 
     def cleanup(self):
         pass

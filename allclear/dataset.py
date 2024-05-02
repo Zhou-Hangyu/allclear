@@ -104,6 +104,11 @@ class CRDataset(Dataset):
         target_cloud_mask = torch.from_numpy(target_cloud_mask).float().unsqueeze(0).unsqueeze(0)
         target_shadow_mask = torch.from_numpy(target_shadow_mask).float().unsqueeze(0).unsqueeze(0)
 
+        target_lulc_label = target_metadata["lulc"]
+        with rs.open(target_metadata["DW File Path"]) as src:
+            target_lulc_map = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
+        target_lulc_map = torch.from_numpy(target_lulc_map).float().unsqueeze(0)
+
         # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
         input_images = []
         input_cloud_masks = []
@@ -150,6 +155,8 @@ class CRDataset(Dataset):
             "target": target_image,  # Shape: (T, C, H, W)
             "target_cloud_mask": target_cloud_mask,  # Shape: (1, 1, H, W)
             "target_shadow_mask": target_shadow_mask,  # Shape: (1, 1, H, W)
+            "target_lulc_label": target_lulc_label,  # Shape: (T)
+            "target_lulc_map": target_lulc_map,  # Shape: (1, 1, H, W)
             "timestamps": timestamps,  # Shape: (T)
             "input_cloud_masks": input_cloud_masks,  # Shape: (T, 1, H, W)
             "input_shadow_masks": input_shadow_masks,  # Shape: (T, 1, H, W)

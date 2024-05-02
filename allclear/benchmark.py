@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
 import sys, os
+from allclear.utils import plot_lulc_metrics
 
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
@@ -268,9 +269,14 @@ class BenchmarkEngine:
         # print(f"Targets Shape: {targets.shape}")
         # print(f"Masks Shape: {masks.shape}")
 
-        metrics = Metrics(outputs, targets, masks)
+        metrics = Metrics(outputs, targets, masks, lulc=lulc_labels, lulc_maps=lulc_maps)
         results = metrics.evaluate_aggregate()
         print(results)
+
+        strat_lulc_label = metrics.evaluate_strat_lulc(mode="label")
+        strat_lulc = metrics.evaluate_strat_lulc(mode="map")
+        plot_lulc_metrics(strat_lulc_label, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_label")
+        plot_lulc_metrics(strat_lulc, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
 
         # Remove B10 from the outputs and targets for evaluation
         # targets = targets[:, :, self.args.eval_bands, :, :]
@@ -299,7 +305,7 @@ def parse_arguments():
     parser.add_argument("--selected-rois", type=int, nargs="+", required=True, help="Selected ROIs for benchmarking")
     parser.add_argument("--time-span", type=int, default=3, help="Time span for the dataset")
     parser.add_argument("--cloud-percentage-range", type=int, nargs=2, default=[20, 30], help="Cloud percentage range for the dataset")
-    parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init", help="Path to save the experiment results")
+    parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines", help="Path to save the experiment results")
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
     parser.add_argument("--eval-mode", type=str, default="toa", choices=["toa", "sr"], help="Evaluation mode for the dataset")
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")

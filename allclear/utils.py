@@ -5,9 +5,10 @@ import os
 import matplotlib
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
+import torch
 
 
-def plot_lulc_metrics(metrics_data, dpi=200):
+def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
     """
     Plot LULC metrics for each class and metric type using dynamic world v1 colors.
 
@@ -57,7 +58,12 @@ def plot_lulc_metrics(metrics_data, dpi=200):
         ax.set_xticks(class_indices)
 
     plt.tight_layout()
-    plt.show()
+    if save_dir:
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        plt.savefig(os.path.join(save_dir, f'{model_config}_lulc_metrics.png'), bbox_inches='tight')
+    else:
+        plt.show()
 
 
 
@@ -97,6 +103,7 @@ def visualize_with_grid(
                 msi_data = src.read()
                 # TODO: automatic normalization
                 msi_data = np.clip(msi_data / 3000, 0, 1)
+                msi_data = torch.tensor(msi_data)
         else:
             msi_data = msi
             msi_data = np.clip(msi_data * 10000 / 3000, 0, 1)

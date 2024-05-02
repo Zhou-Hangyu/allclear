@@ -51,7 +51,6 @@ python $SCRIPT_PATH \
   --experiment-output-path $EXP_OUTPUT_PATH \
   --save-plots \
   --eval-mode $EVAL_MODE \
-  --eval-bands $EVAL_BANDS \
   --su-checkpoint $SU_CHECKPOINT \
   --su-model-blocks $SU_MODEL_BLOCKS \
   --su-max-dim $SU_MAX_DIM \

@@ -7,6 +7,9 @@ from tqdm import tqdm
 import sys, os
 from allclear.utils import plot_lulc_metrics
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
+
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
     sys.path.append("/share/hariharan/ck696/allclear/baselines")

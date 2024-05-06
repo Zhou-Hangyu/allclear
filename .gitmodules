@@ -10,3 +10,6 @@
 [submodule "baselines/CTGAN"]
 	path = baselines/CTGAN
 	url = https://github.com/come880412/CTGAN.git
+[submodule "baselines/STGAN"]
+	path = baselines/STGAN
+	url = https://github.com/VSAnimator/stgan.git

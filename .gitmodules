@@ -7,3 +7,6 @@
 [submodule "baselines/DiffCR"]
 	path = baselines/DiffCR
 	url = https://github.com/Zhou-Hangyu/DiffCR.git
+[submodule "baselines/CTGAN"]
+	path = baselines/CTGAN
+	url = https://github.com/come880412/CTGAN.git

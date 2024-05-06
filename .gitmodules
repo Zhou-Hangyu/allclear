@@ -13,3 +13,6 @@
 [submodule "baselines/STGAN"]
 	path = baselines/STGAN
 	url = https://github.com/VSAnimator/stgan.git
+[submodule "baselines/PMAA"]
+	path = baselines/PMAA
+	url = https://github.com/XavierJiezou/PMAA.git

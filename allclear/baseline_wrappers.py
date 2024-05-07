@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import os, json, datetime, sys
 from datetime import datetime
 import torch
+import torch.nn.functional as F
 
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
@@ -409,4 +410,58 @@ class CTGAN(BaseModel):
         self.model = self.model.to(self.device)
         output, _, _ = self.model(input_imgs)
         output = output.unsqueeze(1) * 0.5 + 0.5
+        return {"output": output}
+    
+
+
+class UTILISE(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+
+
+        if "ck696" in os.getcwd():
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/UTILISE")
+            # Default data and model settings (i.e., settings used during training)
+            config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
+            # Test-specific data settings
+            # config_file_test = '/share/hariharan/ck696/allclear/baselines/UTILISE/configs/config_earthnet2021_test_simulation.yaml'
+            # Model weights
+            # checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+            checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+        # else:
+        #     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
+        #     # Default data and model settings (i.e., settings used during training)
+        #     config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo.yaml"
+        #     # Test-specific data settings
+        #     config_file_test = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/config_earthnet2021_test_simulation.yaml'
+        #     # Model weights
+        #     checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+        #     checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+
+        
+        from baselines.UTILISE.lib.eval_tools import Imputation
+        utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
+        self.model = utilise.model.to(self.device)
+        self.model.eval()
+        self.bands = (1,2,3,7)
+        print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
+
+    def get_model_config(self):
+        pass
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        return inputs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+        # Model I/O (bs, t, c, h, w)
+        output = self.model(inputs["input_images"])[:,2:3]
         return {"output": output}

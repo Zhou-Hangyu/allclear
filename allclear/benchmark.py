@@ -5,11 +5,6 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
 import sys, os
-from allclear.utils import plot_lulc_metrics
-
-import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
-
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
     sys.path.append("/share/hariharan/ck696/allclear/baselines")
@@ -18,8 +13,15 @@ else:
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
+from allclear.utils import plot_lulc_metrics
+
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
+
+
+
 from allclear import CRDataset
-from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN
 from baselines.UnCRtainTS.model.parse_args import create_parser
 
 # Logger setup
@@ -83,12 +85,24 @@ class Metrics:
         num_batches = (self.outputs.shape[0] + self.batch_size - 1) // self.batch_size
         maes, rmses, psnrs, sams, ssims = [], [], [], [], []
 
+        # print("mask shape": masks.shape)
+        print(f"Mask shape: {masks.shape}")
+
         for i in tqdm(range(num_batches), desc="Processing batches"):
             start = i * self.batch_size
             end = min((i + 1) * self.batch_size, self.outputs.shape[0])
             batch_outputs = self.outputs[start:end].to(self.device)
             batch_targets = self.targets[start:end].to(self.device)
             batch_masks = masks[start:end].to(self.device)
+
+            assert batch_outputs.shape == batch_targets.shape, f"Output Shape: {batch_outputs.shape}, Target Shape: {batch_targets.shape}"
+            if batch_outputs.shape != batch_masks.shape:
+                print("The shape of the output and mask is different")
+                print("Select the first channel of the mask as the mask for the output")
+                assert batch_outputs.size(0) == batch_masks.size(0)
+                assert batch_outputs.size(2) == batch_masks.size(2)
+                assert batch_outputs.size(3) == batch_masks.size(3)
+                batch_masks = batch_masks[:,0:1]
 
             maes.append(self.mae(batch_outputs, batch_targets, batch_masks))
             rmses.append(self.rmse(batch_outputs, batch_targets, batch_masks))
@@ -107,6 +121,7 @@ class Metrics:
     def mae(self, outputs, targets, masks):
         if masks is None:
             raise ValueError("Mask is required for MAE calculation")
+
         output_masked = outputs * masks
         target_masked = targets * masks
         mae_masked = F.l1_loss(output_masked, target_masked, reduction='none') * masks
@@ -221,6 +236,8 @@ class BenchmarkEngine:
             model = Mosaicing(self.args)
         elif self.args.model_name == "simpleunet":
             model = Simple3DUnet(self.args)
+        elif self.args.model_name == "ctgan":
+            model = CTGAN(self.args)
         else:
             raise ValueError(f"Invalid model name: {self.args.model_name}")
         return model
@@ -259,18 +276,11 @@ class BenchmarkEngine:
                     # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
                     continue
 
-        # print(f"outputs shape: {outputs_all[0].shape}")
-        # print(f"targets shape: {targets_all[0].shape}")
-        # print(f"mask shape: {target_masks_all[0].shape}")
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
         masks = torch.cat(target_masks_all, dim=0)
         lulc_labels = torch.cat(target_lulc_labels, dim=0)
         lulc_maps = torch.cat(target_lulc_maps, dim=0)
-
-        # print(f"Outputs Shape: {outputs.shape}")
-        # print(f"Targets Shape: {targets.shape}")
-        # print(f"Masks Shape: {masks.shape}")
 
         metrics = Metrics(outputs, targets, masks, lulc=lulc_labels, lulc_maps=lulc_maps)
         results = metrics.evaluate_aggregate()
@@ -327,7 +337,7 @@ def parse_arguments():
     su_args.add_argument("--su-max-dim", type=int, default=512, help="Max dimension for Simple3DUnet")
     su_args.add_argument("--su-model-blocks", type=str, default="CRRAAA", help="Model blocks for Simple3DUnet")
     su_args.add_argument("--su-num-groups", type=int, default=4, help="Number of groups for normalization in Simple3DUnet")
-    su_args.add_argument("--su-checkpoint", type=str, help="Checkpoint for Simple3DUnet")
+    su_args.add_argument("--su-checkpoint", type=str, default="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_12.pt", help="Checkpoint for Simple3DUnet")
 
     args = parser.parse_args()
     return args
@@ -342,7 +352,7 @@ if __name__ == "__main__":
             '--root3', benchmark_args.uc_root3,
             '--weight_folder', benchmark_args.uc_weight_folder])
         args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
-    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet"]:
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan"]:
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")

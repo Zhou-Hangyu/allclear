@@ -363,3 +363,50 @@ class Simple3DUnet(BaseModel):
         # assert 0 == 1
 
         return  {"output": prediction}
+    
+
+class CTGAN(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+
+        args.image_size = 256
+        args.load_gen = '/share/hariharan/ck696/allclear/baselines/CTGAN/CTGAN/CTGAN/Sen2_MTC/Pretrain/CTGAN-Sen2_MTC/G_epoch97_PSNR21.259-002.pth'
+        
+        self.image_size = args.image_size
+        self.load_gen = args.load_gen
+
+        from baselines.CTGAN.model.CTGAN import CTGAN_Generator
+
+        model_GEN = CTGAN_Generator(self.image_size)
+        model_GEN.load_state_dict(torch.load(self.load_gen))
+
+        self.model = model_GEN
+        self.model = self.model.to(self.device)
+        self.model.eval()
+
+        # Bands: R, G, B, NIR
+        self.bands = (3,2,1,7)
+
+    def get_model_config(self):
+        pass
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, :, self.bands]
+        return inputs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+        # Size of the model input is (T, BS, C, H, W)
+        # Size of the model output is (BS, C, H, W)
+        input_imgs = inputs["input_images"].permute(1, 0, 2, 3, 4)[:,:,self.bands] * 2 - 1
+        self.model = self.model.to(self.device)
+        output, _, _ = self.model(input_imgs)
+        output = output.unsqueeze(1) * 0.5 + 0.5
+        return {"output": output}

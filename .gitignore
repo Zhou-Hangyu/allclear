@@ -1,5 +1,8 @@
 allclear/baselines/DiffCR
 allclear/baselines/UnCRtainTS
+allclear/baselines/STGAN/CTGAN
+allclear/baselines/CTGAN
+allclear/baselines/PMAA
 
 allclear/baselines/SimpleUnet/diffusers_src/__pycache__
 allclear/baselines/SimpleUnet/diffusers_src/*/__pycache__

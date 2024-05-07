@@ -421,29 +421,22 @@ class UTILISE(BaseModel):
 
         if "ck696" in os.getcwd():
             sys.path.append("/share/hariharan/ck696/allclear/baselines/UTILISE")
-            # Default data and model settings (i.e., settings used during training)
-            config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
-            # Test-specific data settings
-            # config_file_test = '/share/hariharan/ck696/allclear/baselines/UTILISE/configs/config_earthnet2021_test_simulation.yaml'
-            # Model weights
+            # config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo.yaml"
             # checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+            config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
             checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
-        # else:
-        #     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
-        #     # Default data and model settings (i.e., settings used during training)
-        #     config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo.yaml"
-        #     # Test-specific data settings
-        #     config_file_test = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/config_earthnet2021_test_simulation.yaml'
-        #     # Model weights
-        #     checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
-        #     checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+        else:
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
+            # config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo.yaml"
+            # checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+            config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
+            checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
 
         
         from baselines.UTILISE.lib.eval_tools import Imputation
         utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
         self.model = utilise.model.to(self.device)
         self.model.eval()
-        self.bands = (1,2,3,7)
         print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
 
     def get_model_config(self):

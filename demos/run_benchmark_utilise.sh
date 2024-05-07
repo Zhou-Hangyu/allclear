@@ -14,8 +14,9 @@ DEVICE="cuda:0"
 EVAL_MODE='toa'
 
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
-# SELECTED_ROIS='14' # 13 test rois from sen12ms-cr-ts
-SELECTED_ROIS='0 1 14 21 29 31 ' # 13 test rois from sen12ms-cr-ts
+SELECTED_ROIS='34 35 ' # 13 test rois from sen12ms-cr-ts
+# SELECTED_ROIS='0 1 14 21 29 31 ' # 13 test rois from sen12ms-cr-ts
+
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/UTILISE/outputs"
 
 

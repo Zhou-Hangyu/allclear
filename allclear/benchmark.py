@@ -21,7 +21,7 @@ torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of
 
 
 from allclear import CRDataset
-from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE, PMAA
 from baselines.UnCRtainTS.model.parse_args import create_parser
 
 # Logger setup
@@ -240,6 +240,8 @@ class BenchmarkEngine:
             model = CTGAN(self.args)
         elif self.args.model_name == "utilise":
             model = UTILISE(self.args)
+        elif self.args.model_name == "pmaa":
+            model = PMAA(self.args)
         else:
             raise ValueError(f"Invalid model name: {self.args.model_name}")
         return model
@@ -341,6 +343,8 @@ def parse_arguments():
     su_args.add_argument("--su-num-groups", type=int, default=4, help="Number of groups for normalization in Simple3DUnet")
     su_args.add_argument("--su-checkpoint", type=str, default="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_12.pt", help="Checkpoint for Simple3DUnet")
 
+    su_args = parser.add_argument_group("PMAA Arguments")
+    su_args.add_argument("--pmaa-model", type=str, default="new", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
     args = parser.parse_args()
     return args
 
@@ -354,7 +358,7 @@ if __name__ == "__main__":
             '--root3', benchmark_args.uc_root3,
             '--weight_folder', benchmark_args.uc_weight_folder])
         args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
-    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan", "utilise"]:
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan", "utilise", "pmaa"]:
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")

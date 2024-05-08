@@ -427,8 +427,8 @@ class UTILISE(BaseModel):
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
             config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml"
             checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
-            from lib.eval_tools import Imputation
         
+        from lib.eval_tools import Imputation
         utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
         self.model = utilise.model.to(self.device)
         self.model.eval()
@@ -460,10 +460,27 @@ class PMAA(BaseModel):
     def __init__(self, args):
         super().__init__(args)
 
-        utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
-        self.model = utilise.model.to(self.device)
+        if "ck696" in os.getcwd():
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
+            if args.pmaa_model == "new":
+                checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
+            elif args.pmaa_model == "old":
+                checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
+            else:
+                raise ValueError("Invalid model type")
+        else:
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA")
+            if args.pmaa_model == "new":
+                checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
+            elif args.pmaa_model == "old":
+                checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
+            else:
+                raise ValueError("Invalid model type")
+
+        from model.pmaa import PMAA
+        self.model = PMAA(32, 4)
+        self.model.load_state_dict(torch.load(checkpoint))
         self.model.eval()
-        print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
 
     def get_model_config(self):
         pass

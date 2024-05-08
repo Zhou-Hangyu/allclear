@@ -8,13 +8,14 @@ BASELINE_BASE_PATH='/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS
 DATA_PATH="/share/hariharan/cloud_removal/metadata/split_temp/test_s2_2022_1-2022_12_patches_t3.csv"
 METADATA_PATH="/share/hariharan/cloud_removal/metadata/patch_temp/test_s2_2022_1-2022_12_ts_cr_more_metadata.csv"
 MODEL_NAME="simpleunet"
-BATCH_SIZE=3
-NUM_WORKERS=2
+BATCH_SIZE=4
+NUM_WORKERS=4
 DEVICE="cuda:0"
 EVAL_MODE="sr"
 
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
 # SELECTED_ROIS='0 1' # 13 test rois from sen12ms-cr-ts
+#SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52 56 65 71 80 83' # 18 test rois from both sen12ms-cr-ts and sen12ms-cr
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/init"
 
 # v37 - 1

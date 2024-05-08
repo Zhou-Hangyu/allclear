@@ -461,7 +461,7 @@ class PMAA(BaseModel):
         super().__init__(args)
 
         if "ck696" in os.getcwd():
-            sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA/model")
             if args.pmaa_model == "new":
                 checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
             elif args.pmaa_model == "old":
@@ -469,7 +469,7 @@ class PMAA(BaseModel):
             else:
                 raise ValueError("Invalid model type")
         else:
-            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA")
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA/model")
             if args.pmaa_model == "new":
                 checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
             elif args.pmaa_model == "old":
@@ -477,17 +477,29 @@ class PMAA(BaseModel):
             else:
                 raise ValueError("Invalid model type")
 
-        from model.pmaa import PMAA
+        from pmaa import PMAA
         self.model = PMAA(32, 4)
+        def replace_batchnorm(model):
+            for name, child in model.named_children():
+                if isinstance(child, torch.nn.BatchNorm2d):
+                    child: torch.nn.BatchNorm2d = child
+                    setattr(model, name, torch.nn.InstanceNorm2d(child.num_features))
+                else:
+                    replace_batchnorm(child)
+        replace_batchnorm(self.model)
+        # load
         self.model.load_state_dict(torch.load(checkpoint))
+        self.model = self.model.to(self.device)
         self.model.eval()
+
+        self.bands = (1,2,3,7)
 
     def get_model_config(self):
         pass
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)[:,:,self.bands]
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:,:,self.bands]
         return inputs
 
     def forward(self, inputs):
@@ -499,5 +511,7 @@ class PMAA(BaseModel):
             - dates: (B, T)
         """
         # Model I/O (bs, t, c, h, w)
-        output = self.model(inputs["input_images"])[:,2:3]
+        x = inputs["input_images"] * 2 - 1
+        output, _, _ = self.model(x)
+        output = output.unsqueeze(1) * 0.5 + 0.5
         return {"output": output}

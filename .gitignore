@@ -1,5 +1,6 @@
 allclear/baselines/DiffCR
 allclear/baselines/UnCRtainTS
+allclear/baselines/CTGAN/Pretrain
 
 allclear/baselines/SimpleUnet/diffusers_src/__pycache__
 allclear/baselines/SimpleUnet/diffusers_src/*/__pycache__

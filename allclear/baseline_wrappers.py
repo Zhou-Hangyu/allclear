@@ -419,22 +419,16 @@ class UTILISE(BaseModel):
     def __init__(self, args):
         super().__init__(args)
 
-
         if "ck696" in os.getcwd():
-            sys.path.append("/share/hariharan/ck696/allclear/baselines/UTILISE")
-            # config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo.yaml"
-            # checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
-            config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
-            checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/U-TILISE")
+            config_file_train = "/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml"
+            checkpoint = '/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
         else:
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
-            # config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo.yaml"
-            # checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
-            config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
-            checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
-
+            config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml"
+            checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+            from lib.eval_tools import Imputation
         
-        from baselines.UTILISE.lib.eval_tools import Imputation
         utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
         self.model = utilise.model.to(self.device)
         self.model.eval()
@@ -466,7 +460,6 @@ class PMAA(BaseModel):
     def __init__(self, args):
         super().__init__(args)
 
-        from baselines.UTILISE.lib.eval_tools import Imputation
         utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
         self.model = utilise.model.to(self.device)
         self.model.eval()

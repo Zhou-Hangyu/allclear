@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import os, json, datetime, sys
 from datetime import datetime
 import torch
+import torch.nn.functional as F
 
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
@@ -363,3 +364,97 @@ class Simple3DUnet(BaseModel):
         # assert 0 == 1
 
         return  {"output": prediction}
+    
+
+class CTGAN(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+
+        args.image_size = 256
+        args.load_gen = '/share/hariharan/ck696/allclear/baselines/CTGAN/CTGAN/CTGAN/Sen2_MTC/Pretrain/CTGAN-Sen2_MTC/G_epoch97_PSNR21.259-002.pth'
+        
+        self.image_size = args.image_size
+        self.load_gen = args.load_gen
+
+        from baselines.CTGAN.model.CTGAN import CTGAN_Generator
+
+        model_GEN = CTGAN_Generator(self.image_size)
+        model_GEN.load_state_dict(torch.load(self.load_gen))
+
+        self.model = model_GEN
+        self.model = self.model.to(self.device)
+        self.model.eval()
+
+        # Bands: R, G, B, NIR
+        self.bands = (3,2,1,7)
+
+    def get_model_config(self):
+        pass
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, :, self.bands]
+        return inputs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+        # Size of the model input is (T, BS, C, H, W)
+        # Size of the model output is (BS, C, H, W)
+        input_imgs = inputs["input_images"].permute(1, 0, 2, 3, 4)[:,:,self.bands] * 2 - 1
+        self.model = self.model.to(self.device)
+        output, _, _ = self.model(input_imgs)
+        output = output.unsqueeze(1) * 0.5 + 0.5
+        return {"output": output}
+    
+
+
+class UTILISE(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+
+
+        if "ck696" in os.getcwd():
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/UTILISE")
+            # config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo.yaml"
+            # checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+            config_file_train = "/share/hariharan/ck696/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
+            checkpoint = '/share/hariharan/ck696/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+        else:
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
+            # config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo.yaml"
+            # checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_earthnet2021.pth'
+            config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/UTILISE/configs/demo_sen12.yaml"
+            checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/UTILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+
+        
+        from baselines.UTILISE.lib.eval_tools import Imputation
+        utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
+        self.model = utilise.model.to(self.device)
+        self.model.eval()
+        print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
+
+    def get_model_config(self):
+        pass
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        return inputs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+        # Model I/O (bs, t, c, h, w)
+        output = self.model(inputs["input_images"])[:,2:3]
+        return {"output": output}

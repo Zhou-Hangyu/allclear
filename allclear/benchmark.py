@@ -21,7 +21,7 @@ torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of
 
 
 from allclear import CRDataset
-from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE, PMAA
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE, PMAA, DiffCR
 from baselines.UnCRtainTS.model.parse_args import create_parser
 
 # Logger setup
@@ -242,6 +242,8 @@ class BenchmarkEngine:
             model = UTILISE(self.args)
         elif self.args.model_name == "pmaa":
             model = PMAA(self.args)
+        elif self.args.model_name == "diffcr":
+            model = DiffCR(self.args)
         else:
             raise ValueError(f"Invalid model name: {self.args.model_name}")
         return model
@@ -358,7 +360,7 @@ if __name__ == "__main__":
             '--root3', benchmark_args.uc_root3,
             '--weight_folder', benchmark_args.uc_weight_folder])
         args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
-    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan", "utilise", "pmaa"]:
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan", "utilise", "pmaa", "diffcr"]:
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")

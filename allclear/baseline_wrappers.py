@@ -515,3 +515,128 @@ class PMAA(BaseModel):
         output, _, _ = self.model(x)
         output = output.unsqueeze(1) * 0.5 + 0.5
         return {"output": output}
+    
+
+
+
+class DiffCR(BaseModel):
+    def __init__(self, args):
+        super().__init__(args)
+
+        if "ck696" in os.getcwd():
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/DiffCR3")
+        else:
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/DiffCR3")
+
+        from core.logger import VisualWriter, InfoLogger
+        
+        import core.util as Util
+        from data import define_dataloader
+        from models import create_model, define_network, define_loss, define_metric
+
+
+        opt = self.get_options()
+
+        phase_logger = InfoLogger(opt)
+        # phase_writer = VisualWriter(opt, phase_logger)  
+        phase_logger.info('Create the log file in directory {}.\n'.format(opt['path']['experiments_root']))
+
+        print('''set networks and dataset''')
+        '''set networks and dataset'''
+        # phase_loader, val_loader = define_dataloader(phase_logger, opt) # val_loader is None if phase is test.
+        networks = [define_network(phase_logger, opt, item_opt) for item_opt in opt['model']['which_networks']]
+
+        print('''set metrics, loss, optimizer and  schedulers''')
+        ''' set metrics, loss, optimizer and  schedulers '''
+        metrics = [define_metric(phase_logger, item_opt) for item_opt in opt['model']['which_metrics']]
+        losses = [define_loss(phase_logger, item_opt) for item_opt in opt['model']['which_losses']]
+
+        self.model = create_model(
+            opt = opt,
+            networks = networks,
+            phase_loader = None,
+            val_loader = None,
+            losses = losses,
+            metrics = metrics,
+            logger = phase_logger,
+            writer = None
+        )
+
+        self.model.netG.to(self.device)
+        self.model.netG.eval()
+
+        self.bands = (3,2,1)  # {'MAE': 0.2467460036277771, 'RMSE': 0.2747446596622467, 'PSNR': 11.68069839477539, 'SAM': 14.844504356384277, 'SSIM': 0.11971022933721542}
+
+    def get_options(self):
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument(
+            '-c', '--config', 
+            type=str, 
+            # default='config/ours_double_encoder_splitcaCond_splitcaUnet_ALLCLEAR.json', 
+            default="/share/hariharan/ck696/allclear/baselines/DiffCR3/config/ours_double_encoder_splitcaCond_splitcaUnet_ALLCLEAR.json", 
+            help='JSON file for configuration'
+        )
+        
+        parser.add_argument(
+            '-p', '--phase', 
+            type=str, 
+            choices=['train', 'test'], 
+            help='Run train or test', 
+            default='test'
+        )
+        
+        parser.add_argument(
+            '-b', '--batch', 
+            type=int, 
+            default=2, 
+            help='Batch size in every GPU'
+        )
+        
+        parser.add_argument(
+            '-gpu', '--gpu_ids', 
+            type=str, 
+            default="0"
+        )
+        
+        parser.add_argument(
+            '-d', '--debug', 
+            action='store_true'
+        )
+        
+        parser.add_argument(
+            '-P', '--port', 
+            default='21012', 
+            type=str
+        )
+
+        import core.praser as Praser
+        args, _ = parser.parse_known_args()
+        opt = Praser.parse(args)
+        
+        return opt
+
+    def get_model_config(self):
+        pass
+
+    def preprocess(self, inputs):
+        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)[:,:,self.bands]
+        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:,:,self.bands]
+        return inputs
+
+    def forward(self, inputs):
+        """Refer to `prepare_data_multi()`
+        Shapes:
+            - input_imgs: (B, T, C, H, W)
+            - target_imgs: (B, 1, C, H, W)
+            - masks: (B, T, H, W)
+            - dates: (B, T)
+        """
+        bs, c, t, h, w = inputs["input_images"].shape
+        # Model I/O (bs, c * t, h, w)
+        x = inputs["input_images"] * 2 - 1
+        x = x.reshape(bs, c*t, h, w)
+        dummy_y = x[:,:3]
+        output, visuals = self.model.netG.restoration(x, y_0=dummy_y, sample_num=self.model.sample_num)
+        output = output.unsqueeze(1) * 0.5 + 0.5
+        return {"output": output}

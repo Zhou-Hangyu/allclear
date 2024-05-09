@@ -562,6 +562,8 @@ class DiffCR(BaseModel):
             writer = None
         )
 
+        params = torch.load("/share/hariharan/ck696/allclear/baselines/DiffCR3/pretrained/diffcr_new.pth")
+        self.model.netG.load_state_dict(params,strict=False)
         self.model.netG.to(self.device)
         self.model.netG.eval()
 

@@ -95,7 +95,7 @@ def visualize_with_grid(
     dpi=100,
 ):
     """
-    Visualize a multi-channel MSI with optional overlays and a grid.
+    Visualize a satellite image (MSI or SAR) with optional overlays and a grid.
     """
     if msi is not None:
         if isinstance(msi, str):

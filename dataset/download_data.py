@@ -228,7 +228,10 @@ def process_roi(roi_chunk):
 
 
 def main_download_session(args):
-    rois_df = pd.read_csv(args.rois).iloc[args.start_roi:args.end_roi]
+    if args.end_roi == -1:
+        rois_df = pd.read_csv(args.rois).iloc[args.start_roi:]
+    else:
+        rois_df = pd.read_csv(args.rois).iloc[args.start_roi:args.end_roi]
 
     buffer_distance = args.radius * 1.2
     rois = [
@@ -261,7 +264,7 @@ def parse_arguments():
     parser.add_argument("--start-date", type=str, help="Start date in YYYY-MM-DD format")
     parser.add_argument("--end-date", type=str, help="End date in YYYY-MM-DD format")
     parser.add_argument("--start-roi", type=int, default=0, help="Start ROI index of this session in the ROIs csv file")
-    parser.add_argument("--end-roi", type=int, default=10, help="End ROI index of this session in the ROIs csv file")
+    parser.add_argument("--end-roi", type=int, default=-1, help="End ROI index of this session in the ROIs csv file")
     parser.add_argument("--crs", type=str, help="Coordinate reference system", default="EPSG:4326")
     parser.add_argument("--res", type=int, default=10, help="Resolution of the image to rescale to")
     parser.add_argument("--workers", type=int, default=1, help="Number of workers to use for downloading")

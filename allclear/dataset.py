@@ -60,7 +60,6 @@ class CRDataset(Dataset):
     def __init__(self, dataset_csv, patch_metadata_csv, selected_rois, time_span, mode, cloud_percentage_range=None):
         self.data = pd.read_csv(dataset_csv)
         self.data = self.data[self.data["ROI ID"].isin(selected_rois)]
-        # self.data = self.data[self.data["Target"].split("_")[0][3:].isin(selected_rois)]
         self.metadata = pd.read_csv(patch_metadata_csv)
         self.time_span = time_span
 
@@ -81,18 +80,21 @@ class CRDataset(Dataset):
         target_id = entry["Target"]
         input_ids = entry[[col for col in self.data.columns if "Input" in col]].dropna().tolist()
 
-        # Find the corresponding rows in the metadata for the target and inputs.
         target_metadata = self.metadata[self.metadata["uid"] == target_id].iloc[0]
         input_metadatas = [self.metadata[self.metadata["uid"] == input_id].iloc[0] for input_id in input_ids]
 
-        # Load the target image and the corresponding mask.
+        # Load the target and input images and masks.
+        input_images = []
+        input_cloud_masks = []
+        input_shadow_masks = []
+        timestamps = []
+
         if self.mode == "toa":
             try:
                 with rs.open(target_metadata["ROI File Path"].replace("s2", "s2_toa")) as src:
                     target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
             except Exception as e:
                 print(e)
-
         elif self.mode == "sr":
             with rs.open(target_metadata["ROI File Path"]) as src:
                 target_image = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
@@ -109,13 +111,6 @@ class CRDataset(Dataset):
             target_lulc_map = src.read(window=rs.windows.Window(*eval(target_metadata["Offset"]), 256, 256))
         target_lulc_map = torch.from_numpy(target_lulc_map).float().unsqueeze(0)
 
-        # Initialize lists for input images, cloud masks, shadow masks, and timestamps.
-        input_images = []
-        input_cloud_masks = []
-        input_shadow_masks = []
-        timestamps = []
-
-        # Load the input images and their corresponding masks.
         for input_metadata in input_metadatas:
             if self.mode == "toa":
                 try:
@@ -137,11 +132,9 @@ class CRDataset(Dataset):
             input_cloud_masks.append(torch.from_numpy(input_cloud_mask).unsqueeze(0).float())
             input_shadow_masks.append(torch.from_numpy(input_shadow_mask).unsqueeze(0).float())
 
-            # Collect timestamps.
             capture_date = datetime.strptime(input_metadata["capture_date"], "%Y-%m-%d %H:%M:%S")
             timestamps.append(capture_date.timestamp())
 
-        # Stack the lists of images and masks into tensors.
         input_images = torch.stack(input_images)
         input_cloud_masks = torch.stack(input_cloud_masks)
         input_shadow_masks = torch.stack(input_shadow_masks)

@@ -252,6 +252,7 @@ class Simple3DUnet(BaseModel):
             if "custom_pos_embed.position" in key: break
         params_pos_length = params[key].size(1)
         self.update_model_position_token(model, self.compute_day_differences(torch.zeros((1,params_pos_length))))
+        self.update_model_number_position_token(model)
         model.load_state_dict(params, strict=False)
         model.eval()
 
@@ -267,6 +268,7 @@ class Simple3DUnet(BaseModel):
         self.model_blocks = args.su_model_blocks
         self.num_groups = args.su_num_groups
         self.checkpoint = args.su_checkpoint
+        self.num_pos_tokens = args.su_num_pos_tokens
 
     def preprocess(self, inputs):
 
@@ -309,6 +311,21 @@ class Simple3DUnet(BaseModel):
         for p1, p2 in model.named_parameters():
             if 'position' in p1:
                 p2.data = day_diffs
+
+    def update_model_number_position_token(self, model):
+        
+        for name, p2 in model.named_buffers():
+            # print(name)
+            if "custom_pos_embed.pe" in name:
+                _, old_max_seq_len, old_embed_dim = p2.shape
+                new_buffer = torch.zeros((_, self.num_pos_tokens, old_embed_dim))
+
+                # Access the attribute dynamically to replace the original buffer
+                parts = name.split('.')
+                obj = model
+                for part in parts[:-1]:
+                    obj = getattr(obj, part)
+                setattr(obj, parts[-1], new_buffer)
 
     def forward(self, inputs):
         """Refer to `prepare_data_multi()`

@@ -1,6 +1,3 @@
-[submodule "allclear/baselines/UnCRtainTS"]
-	path = baselines/UnCRtainTS
-	url = https://github.com/PatrickTUM/UnCRtainTS.git
 [submodule "baselines/DiffCR"]
 	path = baselines/DiffCR
 	url = https://github.com/Zhou-Hangyu/DiffCR.git

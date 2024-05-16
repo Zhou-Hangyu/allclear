@@ -13,3 +13,6 @@
 [submodule "baselines/PMAA"]
 	path = baselines/PMAA
 	url = https://github.com/Zhou-Hangyu/PMAA.git
+[submodule "baselines/UnCRtainTS"]
+	path = baselines/UnCRtainTS
+	url = https://github.com/Zhou-Hangyu/UnCRtainTS.git

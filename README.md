@@ -2,7 +2,7 @@
 
 `AllClear` is a comprehensive dataset/benchmark for cloud detection and removal. 
 
-![Geographical distribution of AllClear](images/allclear.svg)
+![Geographical distribution of AllClear](images/allclear.png)
 
 ## Setup
 `AllClear` comes with minimal package requirements. It can be easily installed using pip. 

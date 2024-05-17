@@ -103,9 +103,14 @@ def visualize_with_grid(
             with rs.open(msi) as src:
                 msi_data = src.read()
                 # TODO: automatic normalization
-                msi_data = np.nan_to_num(msi_data, nan=3000)
-                msi_data = np.clip(msi_data / 3000, 0, 1)
-                msi_data = torch.tensor(msi_data)
+                if "s2_toa" in msi:
+                    msi_data = np.nan_to_num(msi_data, nan=3000)
+                    msi_data = np.clip(msi_data / 3000, 0, 1)
+                    msi_data = torch.tensor(msi_data)
+                elif "landsat" in msi:
+                    msi_data = np.nan_to_num(msi_data, nan=1)
+                    msi_data = np.clip(msi_data * 8, 0, 1)
+                    msi_data = torch.tensor(msi_data)
         else:
             msi_data = msi
             msi_data = np.clip(msi_data * 10000 / 3000, 0, 1)
@@ -156,8 +161,8 @@ def visualize_with_grid(
         # p2, p98 = np.percentile(msi_data[msi_channels, ...], [2, 98])
         # msi_normalized = np.clip((msi_data[msi_channels, ...] - p2) / (p98 - p2), 0, 1)
         # plt.imshow(msi_normalized.permute(1, 2, 0), interpolation="nearest")
-        # plt.imshow(msi_data[msi_channels, ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
-        plt.imshow(msi_data[[3,2,1], ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
+        plt.imshow(msi_data[msi_channels, ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
+        # plt.imshow(msi_data[[3,2,1], ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
     elif sar is not None:
         # Process and display SAR image
         p2, p98 = np.percentile(sar_data[sar_channels, ...], [2, 98])

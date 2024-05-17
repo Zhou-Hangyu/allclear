@@ -156,46 +156,6 @@ class CRDataset(Dataset):
         }
 
 
-class CogDataset_v41(Dataset):
-    def __init__(self, num_s2_frames=10):
-        self.dataset_path = Path("/share/hariharan/cloud_removal/MultiSensor/dataset_temp_preprocessed/spatio_temporal")
-        self.num_s2_frames = num_s2_frames
-        self.load_spatio_temporal_info()
-        self.mode = "MSI"
-
-    def __len__(self):
-        return 2048
-
-    def __getitem__(self, idx):
-        # randomly select a row in self.roi_spatio_temporal_info
-        row = self.roi_spatio_temporal_info.iloc[random.randint(0, len(self.roi_spatio_temporal_info) - 1)]
-        roi = row["roi"]
-        patch_id = row["patch_id"]
-        day_counts = row["day_count"]
-
-        day_random_idx = random.randint(0, len(day_counts) - self.num_s2_frames)
-        FILE_PATH = os.path.join(self.dataset_path, f"{roi}_patch{patch_id}.cog")
-        WINDOW = rs.windows.Window(0, day_random_idx * 256, 256, 256 * self.num_s2_frames)
-
-        with rs.open(FILE_PATH) as src:
-            msi = torch.from_numpy(src.read(list(range(1, 11)), window=WINDOW))
-        assert msi.shape == (10, 256 * self.num_s2_frames, 256)
-        msi = msi.reshape(10, self.num_s2_frames, 256, 256)
-        return msi
-
-    def load_spatio_temporal_info(self):
-        csv_list = glob.glob("/share/hariharan/cloud_removal/MultiSensor/dataset_temp_preprocessed/spatio_temporal/roi*.csv")
-        self.roi_spatio_temporal_info = []
-        for csv_file in csv_list:
-            df = pd.read_csv(csv_file)
-            if len(self.roi_spatio_temporal_info) == 0:
-                df["day_count"] = df["day_count"].apply(lambda x: [int(num) for num in re.findall(r"\d+", x)])
-                self.roi_spatio_temporal_info = df
-            else:
-                df["day_count"] = df["day_count"].apply(lambda x: [int(num) for num in re.findall(r"\d+", x)])
-                self.roi_spatio_temporal_info = pd.concat([self.roi_spatio_temporal_info, df], ignore_index=True, axis=0)
-
-
 # Example usage
 if __name__ == "__main__":
     patch_metadata_csv = "/share/hariharan/cloud_removal/metadata/roi40-45_s2_patches.csv"

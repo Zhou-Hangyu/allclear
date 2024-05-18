@@ -251,32 +251,3 @@ def visualize_one_image(
         plt.savefig(save_path, bbox_inches="tight", dpi=200)
 
     plt.show()
-
-
-# def visualize(
-#     roi_id,
-#     date,
-#     satellite="s2",
-#     patch_id=None,
-#     root="/share/hariharan/cloud_removal/MultiSensor/dataset",
-#     save_dir="/share/hariharan/cloud_removal/results/dataset/msi_cloud_shadow",
-#     save=False,
-# ):
-#     """date: y_m_d"""
-#     y, m, d = date.split("_")
-#     roi = f"roi{roi_id}"
-#     msi_fname = f"{roi}_{satellite}_{date}_median.cog"
-#     msi_fpath = os.path.join(root, roi, f"{y}_{m}", satellite, msi_fname)
-#     shadow_cloud_fpath = msi_fpath.replace(satellite, "shadow")
-#     with rs.open(msi_fpath) as src:
-#         msi = src.read()
-#     with rs.open(shadow_cloud_fpath) as src:
-#         cloud_prob = src.read(1)
-#         cloud_mask_30 = cloud_mask_threshold(cloud_prob, 30)
-#         shadow_mask = src.read(3)
-#         shadow_mask = np.where(np.isnan(shadow_mask), 1, shadow_mask)
-#     metadata = {"ROI ID": roi_id, "Date": date, "Satellite": satellite}
-#     if save:
-#         visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"], save_dir=save_dir)
-#     else:
-#         visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"])

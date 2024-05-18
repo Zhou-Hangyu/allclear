@@ -3,13 +3,12 @@ from tqdm import tqdm
 import os
 import rasterio as rs
 import numpy as np
-from multiprocessing import Pool, cpu_count
-from scipy import stats
+from multiprocessing import Pool
 
 
 def nan_percentage(patch_info):
     """Calculate the NaN percentage for each patch."""
-    data = center_crop(patch_info["ROI File Path"], size=(256, 256))
+    data = center_crop(patch_info["image_file_path"], size=(256, 256))
     nan_percentage = np.isnan(data).mean() * 100
     return {"nan_percentage": nan_percentage}
 
@@ -29,7 +28,7 @@ def center_crop(fpath, channels=None, size=(256, 256)):
 
 
 def cloud_shadow_percentage(patch_info):
-    shadow_cloud_file_path = patch_info["Shadow Cloud File Path"]
+    shadow_cloud_file_path = patch_info["cloud_shadow_file_path"]
     if not os.path.exists(shadow_cloud_file_path):
         print(f"Shadow cloud file not found: {shadow_cloud_file_path}")
         data = {
@@ -68,7 +67,7 @@ def process_general_data(df):
 
 def process_s2_data(df):
     tqdm.pandas(desc="Processing Sentinel-2 Patches")
-    df["Shadow Cloud File Path"] = df["ROI File Path"].replace("s2_toa", "cld_shdw", regex=True)
+    df["cloud_shadow_file_path"] = df["image_file_path"].replace("s2_toa", "cld_shdw", regex=True)
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
         result1 = nan_percentage(row)
@@ -85,7 +84,7 @@ def process_chunk(args):
     if satellite == "s2_toa":
         return process_s2_data(df)
     else:
-        return process_s2_data(df)
+        return process_general_data(df)
 
 def parallel_process(df, satellite, num_cores):
     # Split dataframe into chunks
@@ -97,9 +96,13 @@ def parallel_process(df, satellite, num_cores):
     return pd.concat(results, ignore_index=True)
 
 
-def find_all_tiles(root: str, rois: [], date_range: [], satellites: []):
+def find_all_tiles(root: str, rois: [], date_range: [], satellites: [], rois_metadata: pd.DataFrame):
     data_entries = []
     for roi in tqdm(rois, desc='Processing ROIs'):
+        roi_id = int(roi.split("roi")[1])  # "roixxxx" -> xxxx
+        roi_metadata = rois_metadata[rois_metadata['index'] == roi_id]
+        lat = roi_metadata['latitude'].values[0]
+        lon = roi_metadata['longitude'].values[0]
         roi_path = os.path.join(root, roi)
         if os.path.isdir(roi_path):
             for date in date_range:
@@ -108,18 +111,20 @@ def find_all_tiles(root: str, rois: [], date_range: [], satellites: []):
                     for satellite in satellites:
                         s_path = os.path.join(date_path, satellite)
                         if os.path.isdir(s_path):
-                            cog_files = [f for f in os.listdir(s_path) if f.endswith('.tif')]
+                            images = [f for f in os.listdir(s_path) if f.endswith('.tif')]
                             metadata_files = {f: os.path.join(s_path, f) for f in os.listdir(s_path) if f.endswith('_metadata.csv')}
-                            for cog_file in cog_files:
-                                cog_file_path = os.path.join(s_path, cog_file)
-                                metadata_file = cog_file.replace('.tif', '_metadata.csv')
+                            for image in images:
+                                image_file_path = os.path.join(s_path, image)
+                                metadata_file = image.replace('.tif', '_metadata.csv')
                                 metadata_file_path = metadata_files.get(metadata_file, "")
                                 data_entries.append({
-                                    'COG File Path': cog_file_path,
-                                    'Metadata File Path': metadata_file_path,
-                                    'Satellite': satellite,
-                                    'ROI ID': roi,
-                                    'Date (y_m)': date
+                                    'roi': roi,
+                                    'latitude': lat,
+                                    'longitude': lon,
+                                    'date_y_m': date,
+                                    'satellite': satellite,
+                                    'image_file_path': image_file_path,
+                                    'metadata_file_path': metadata_file_path,
                                 })
     return pd.DataFrame(data_entries)
 
@@ -135,13 +140,13 @@ def sanity_checks_tiles(df):
 
 def get_init_metadata(df):
     """Process and split the DataFrame by satellites and extract metadata for each patch."""
-    satellites = df['Satellite'].unique()
+    satellites = df['satellite'].unique()
     results = {}
 
     for satellite in satellites:
-        satellite_df = df[df['Satellite'] == satellite].copy()
+        satellite_df = df[df['satellite'] == satellite].copy()
         # check if the metadata file exists
-        if satellite_df['Metadata File Path'].iloc[0] == '':
+        if satellite_df['metadata_file_path'].iloc[0] == '':
             continue
         else:
             metadata = []
@@ -150,31 +155,25 @@ def get_init_metadata(df):
                                    desc=f'Processing patches for satellite {satellite}'):
                 # TODO: remove this as this is just a temporary fix for testing out the pipeline
                 try:
-                    metadata_df = pd.read_csv(row['Metadata File Path'])
+                    metadata_df = pd.read_csv(row['metadata_file_path'])
                     cached_metadata_df = metadata_df
                 except Exception as e:
                     print(f"Error: {e}. For now use cached metadata just for testing the pipeline.")
                     metadata_df = cached_metadata_df
                 metadata_dict = metadata_df.to_dict(orient='records')[0] if not metadata_df.empty else {}
-                data = {
-                    'ROI ID': row['ROI ID'],
-                    'Date (y_m)': row['Date (y_m)'],
-                    'Satellite': row['Satellite'],
-                    'ROI File Path': row['COG File Path'],
-                    'Metadata File Path': row['Metadata File Path'],
-                }
+                data = row.to_dict()
                 data.update(metadata_dict)
                 metadata.append(data)
             processed_df = pd.DataFrame(metadata)
-            primary_columns = ['ROI ID', 'Date (y_m)', 'Satellite', 'ROI File Path', 'Metadata File Path']
+            primary_columns = ['roi', 'latitude', 'longitude', 'date_y_m', 'satellite', 'image_file_path', 'metadata_file_path']
             metadata_columns = [col for col in processed_df.columns if col not in primary_columns]
             final_columns = primary_columns + sorted(metadata_columns)
             results[satellite] = processed_df[final_columns]
             # make capture_date datetime object, and add patch uid
             results[satellite]['capture_date'] = pd.to_datetime(results[satellite]['capture_date'])
-            results[satellite]['uid'] = (results[satellite]['ROI ID'] + '_' +
+            results[satellite]['uid'] = (results[satellite]['roi'] + '_' +
                                          results[satellite]['capture_date'].dt.strftime('%Y%m%d%H%M') + '_' +
-                                         results[satellite]['Satellite'])
+                                         results[satellite]['satellite'])
             cols = results[satellite].columns.tolist()
             cols.insert(0, cols.pop(cols.index('uid')))
             results[satellite] = results[satellite][cols]
@@ -183,6 +182,7 @@ def get_init_metadata(df):
 if __name__ == "__main__":
     # Command: python -m dataset.metadata
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
+    ROIS_METADATA = pd.read_csv("/share/hariharan/ck696/Decloud/UNet/ROI/sampled_rois_0514/v3_distribution_train_20Ksamples.csv")
     SELECTED_ROIS_FNAME = "dataset_500.txt"
     with open(f"/scratch/allclear/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
         SELECTED_ROIS = f.read().splitlines()
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     WORKERS=8
 
     # Find all tiles
-    metadata = find_all_tiles(DATA_PATH, SELECTED_ROIS, DATE_RANGE, SATS)
+    metadata = find_all_tiles(DATA_PATH, SELECTED_ROIS, DATE_RANGE, SATS, ROIS_METADATA)
     sanity_checks_tiles(metadata)
 
     # Split up satellites and populate the original metadata

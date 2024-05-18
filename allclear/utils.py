@@ -74,13 +74,27 @@ def cloud_mask_threshold(cloud_prob_map, threshold=30):
     return cloud_mask
 
 
-def visualize_with_grid(
+def load_image_center_crop(image, center_crop=False, size=(256, 256)):
+    """Load an image and optionally apply a center crop. Image shape: [C, H, W]."""
+    if isinstance(image, str):
+        with rs.open(image) as src:
+            data = src.read()
+    else:
+        data = image
+    if center_crop:
+        width, height = data.shape[1], data.shape[2]
+        center_x, center_y = width // 2, height // 2
+        offset_x = center_x - size[0] // 2
+        offset_y = center_y - size[1] // 2
+        data = data[:, offset_y:offset_y + size[1], offset_x:offset_x + size[0]]
+    return data
+
+
+def visualize_one_image(
     msi=None,
-    msi_metadata=None,
     msi_channels=(3, 2, 1),
     sar=None,
-    sar_metadata=None,
-    sar_channels=(0,),
+    metadata=None,
     cloud=None,
     cloud_channel=None,
     cloud_color="red",
@@ -93,37 +107,51 @@ def visualize_with_grid(
     default_opacity=0.5,
     save_dir=None,
     dpi=100,
+    center_crop=True,
+    center_crop_shape=(256, 256),
+    with_grid=False,
 ):
     """
     Visualize a satellite image (MSI or SAR) with optional overlays and a grid.
     """
-    if msi is not None:
-        if isinstance(msi, str):
-            # Load MSI data
-            with rs.open(msi) as src:
-                msi_data = src.read()
-                # TODO: automatic normalization
-                if "s2_toa" in msi:
-                    msi_data = np.nan_to_num(msi_data, nan=3000)
-                    msi_data = np.clip(msi_data / 3000, 0, 1)
-                    msi_data = torch.tensor(msi_data)
-                elif "landsat" in msi:
-                    msi_data = np.nan_to_num(msi_data, nan=1)
-                    msi_data = np.clip(msi_data * 8, 0, 1)
-                    msi_data = torch.tensor(msi_data)
-        else:
-            msi_data = msi
-            msi_data = np.clip(msi_data * 10000 / 3000, 0, 1)
-    elif sar is not None:
-        # Load SAR data
-        with rs.open(sar) as src:
-            sar_data = src.read()
-        msi_data = np.zeros((3, *sar_data.shape[1:]))
-        msi_data[0, ...] = sar_data[sar_channels[0], ...]
-        msi_data[1, ...] = sar_data[sar_channels[0], ...]
-        msi_data[2, ...] = sar_data[sar_channels[0], ...]
 
-    # Initialize overlay list
+    def normalize(array):
+        '''
+        normalize: normalize a numpy array so all value are between 0 and 1
+        '''
+        array_min, array_max = np.nanmin(array), np.nanmax(array)
+        return (array - array_min) / (array_max - array_min)
+
+    plt.figure(figsize=(12, 12), dpi=dpi)
+
+    data = None
+    if msi is not None:
+        msi_data = load_image_center_crop(msi, center_crop, center_crop_shape)
+        for channel in msi_channels:
+            msi_data[channel, ...] = normalize(msi_data[channel, ...])
+        data = msi_data
+        plt.imshow(msi_data[msi_channels, ...].transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
+    elif sar is not None:
+        sar_data = load_image_center_crop(sar, center_crop, center_crop_shape)
+        sar_rgb = np.zeros((3, *sar_data.shape[1:]))
+        sar_rgb[0, ...] = normalize(sar_data[0, ...])  # VV
+        sar_rgb[1, ...] = normalize(sar_data[1, ...])  # VH
+        sar_rgb[2, ...] = normalize(sar_data[1, ...] - sar_data[0, ...])  # VH - VV
+        data = sar_rgb
+        plt.imshow(sar_rgb.transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
+
+    if metadata:
+        plt.title(f'ROI (Lat, Long): {metadata["roi"]} ({metadata["latitude"]}, {metadata["longitude"]}), Date: {metadata["date_y_m"]}, Satellite: {metadata["satellite"]}')
+    ax = plt.gca()
+    ax.grid(which="major", visible=False)
+    if with_grid:
+        ax = plt.gca()
+        ax.set_xticks(np.arange(-0.5, data.shape[2], 256), minor=True)
+        ax.set_yticks(np.arange(-0.5, data.shape[1], 256), minor=True)
+        ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+    plt.xlabel("West-East")
+    plt.ylabel("North-South")
+
     overlays = []
 
     # Load cloud data if specified
@@ -153,22 +181,6 @@ def visualize_with_grid(
         # lulc_cmap.set_bad(color='black')  # Set the color for NaN values
         overlays.append((lulc_data[lulc_channel, ...], lulc_cmap))
 
-    # Setup figure
-    plt.figure(figsize=(12, 12), dpi=dpi)
-
-    if msi is not None:
-        # Process and display MSI image
-        # p2, p98 = np.percentile(msi_data[msi_channels, ...], [2, 98])
-        # msi_normalized = np.clip((msi_data[msi_channels, ...] - p2) / (p98 - p2), 0, 1)
-        # plt.imshow(msi_normalized.permute(1, 2, 0), interpolation="nearest")
-        plt.imshow(msi_data[msi_channels, ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
-        # plt.imshow(msi_data[[3,2,1], ...].permute(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
-    elif sar is not None:
-        # Process and display SAR image
-        p2, p98 = np.percentile(sar_data[sar_channels, ...], [2, 98])
-        sar_normalized = np.clip((sar_data[sar_channels, ...] - p2) / (p98 - p2), 0, 1)
-        plt.imshow(sar_normalized.permute(1, 2, 0), interpolation="nearest", cmap="gray")
-
     # Apply overlays
     for overlay_data, color in overlays:
         if isinstance(color, str):
@@ -184,24 +196,6 @@ def visualize_with_grid(
             legend_handles = [Patch(facecolor=color, label=label) for color, label in zip(legend_colors, legend_labels)]
             plt.legend(handles=legend_handles, bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 
-    # Setup grid and metadata if metadata is available
-    if msi_metadata:
-        if isinstance(msi_metadata, dict):
-            plt.title(
-                f'ROI (Lat, Long): {msi_metadata["ROI_ID"]} ({msi_metadata["x"]}, {msi_metadata["y"]}), Date: {msi_metadata["Date"]}, Satellite: {msi_metadata["Satellite"]}'
-            )
-        else:
-            metadata = np.load(msi_metadata, allow_pickle=True).item()
-            plt.title(f'ROI: {metadata["ROI ID"]}, Date: {metadata["Date"]}, Satellite: {metadata["Satellite"]}')
-    ax = plt.gca()
-    ax.set_xticks(np.arange(-0.5, msi_data.shape[2], 256), minor=True)
-    ax.set_yticks(np.arange(-0.5, msi_data.shape[1], 256), minor=True)
-    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
-    ax.grid(which="major", visible=False)
-    plt.xlabel("Longtitude (X)")
-    plt.ylabel("Latitude (Y)")
-
-    # Save the figure if a directory is provided
     if save_dir:
         save_path = os.path.join(save_dir, f'roi{metadata["ROI ID"]}_{metadata["Date"]}_{metadata["Satellite"]}_visualization.png')
         plt.savefig(save_path, bbox_inches="tight", dpi=200)
@@ -209,30 +203,30 @@ def visualize_with_grid(
     plt.show()
 
 
-def visualize(
-    roi_id,
-    date,
-    satellite="s2",
-    patch_id=None,
-    root="/share/hariharan/cloud_removal/MultiSensor/dataset",
-    save_dir="/share/hariharan/cloud_removal/results/dataset/msi_cloud_shadow",
-    save=False,
-):
-    """date: y_m_d"""
-    y, m, d = date.split("_")
-    roi = f"roi{roi_id}"
-    msi_fname = f"{roi}_{satellite}_{date}_median.cog"
-    msi_fpath = os.path.join(root, roi, f"{y}_{m}", satellite, msi_fname)
-    shadow_cloud_fpath = msi_fpath.replace(satellite, "shadow")
-    with rs.open(msi_fpath) as src:
-        msi = src.read()
-    with rs.open(shadow_cloud_fpath) as src:
-        cloud_prob = src.read(1)
-        cloud_mask_30 = cloud_mask_threshold(cloud_prob, 30)
-        shadow_mask = src.read(3)
-        shadow_mask = np.where(np.isnan(shadow_mask), 1, shadow_mask)
-    metadata = {"ROI ID": roi_id, "Date": date, "Satellite": satellite}
-    if save:
-        visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"], save_dir=save_dir)
-    else:
-        visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"])
+# def visualize(
+#     roi_id,
+#     date,
+#     satellite="s2",
+#     patch_id=None,
+#     root="/share/hariharan/cloud_removal/MultiSensor/dataset",
+#     save_dir="/share/hariharan/cloud_removal/results/dataset/msi_cloud_shadow",
+#     save=False,
+# ):
+#     """date: y_m_d"""
+#     y, m, d = date.split("_")
+#     roi = f"roi{roi_id}"
+#     msi_fname = f"{roi}_{satellite}_{date}_median.cog"
+#     msi_fpath = os.path.join(root, roi, f"{y}_{m}", satellite, msi_fname)
+#     shadow_cloud_fpath = msi_fpath.replace(satellite, "shadow")
+#     with rs.open(msi_fpath) as src:
+#         msi = src.read()
+#     with rs.open(shadow_cloud_fpath) as src:
+#         cloud_prob = src.read(1)
+#         cloud_mask_30 = cloud_mask_threshold(cloud_prob, 30)
+#         shadow_mask = src.read(3)
+#         shadow_mask = np.where(np.isnan(shadow_mask), 1, shadow_mask)
+#     metadata = {"ROI ID": roi_id, "Date": date, "Satellite": satellite}
+#     if save:
+#         visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"], save_dir=save_dir)
+#     else:
+#         visualize_with_grid(msi, metadata, overlays=[cloud_mask_30, shadow_mask], overlay_colors=["red", "blue"])

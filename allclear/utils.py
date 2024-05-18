@@ -109,10 +109,57 @@ def visualize_one_image(
     dpi=100,
     center_crop=True,
     center_crop_shape=(256, 256),
-    with_grid=False,
 ):
     """
-    Visualize a satellite image (MSI or SAR) with optional overlays and a grid.
+    Visualize a satellite image (multi-spectral or SAR) with optional overlays and center crop.
+
+    Parameters:
+    - msi: np.ndarray or str (default=None)
+        Multi-Spectral Image data or file path.
+    - msi_channels: tuple (default=(3, 2, 1))
+        Channels to use for RGB visualization from the multi-spectral image.
+    - sar: np.ndarray or str (default=None)
+        Synthetic Aperture Radar image data or file path.
+    - metadata: dict (default=None)
+        Dictionary containing metadata for the image (e.g., ROI, latitude, longitude, date, satellite).
+    - cloud: np.ndarray or str (default=None)
+        Cloud mask data or file path.
+    - cloud_channel: int (default=None)
+        Specific channel to use from the cloud mask data.
+    - cloud_color: str (default="red")
+        Color to visualize the cloud mask.
+    - shadow: np.ndarray or str (default=None)
+        Shadow mask data or file path.
+    - shadow_channel: int (default=None)
+        Specific channel to use from the shadow mask data.
+    - shadow_color: str (default="blue")
+        Color to visualize the shadow mask.
+    - lulc: np.ndarray or str (default=None)
+        Land Use/Land Cover classification data or file path.
+    - lulc_channel: int (default=0)
+        Specific channel to use from the LULC data.
+    - lulc_color: list or ListedColormap (default=None)
+        Colors or colormap for visualizing LULC classes.
+    - default_opacity: float (default=0.5)
+        Default opacity for overlay masks.
+    - save_dir: str (default=None)
+        Directory to save the output image.
+    - dpi: int (default=100)
+        Dots per inch (DPI) for the output image.
+    - center_crop: bool (default=True)
+        Whether to apply center cropping to the image.
+    - center_crop_shape: tuple (default=(256, 256))
+        Shape of the center crop (height, width).
+
+    Returns:
+    None
+        The function displays the image with optional overlays and saves it if a directory is specified.
+
+    Description:
+    This function visualizes a satellite image (either multi-spectral or SAR) with optional overlays for clouds, shadows,
+    and land use/land cover (LULC) classifications. It allows for normalization of image data and can display metadata
+    such as region of interest (ROI), latitude, longitude, date, and satellite information. The function also supports
+    center cropping to focus on a specific part of the image and saves the visualization if a save directory is provided.
     """
 
     def normalize(array):
@@ -144,11 +191,14 @@ def visualize_one_image(
         plt.title(f'ROI (Lat, Long): {metadata["roi"]} ({metadata["latitude"]}, {metadata["longitude"]}), Date: {metadata["date_y_m"]}, Satellite: {metadata["satellite"]}')
     ax = plt.gca()
     ax.grid(which="major", visible=False)
-    if with_grid:
+    if not center_crop:
+        center_x = data.shape[1] // 2
+        center_y = data.shape[2] // 2
+        rect = plt.Rectangle((center_x - center_crop_shape[0] // 2, center_y - center_crop_shape[1] // 2),
+                             center_crop_shape[0], center_crop_shape[1],
+                             linewidth=3, edgecolor='w', facecolor='none')
         ax = plt.gca()
-        ax.set_xticks(np.arange(-0.5, data.shape[2], 256), minor=True)
-        ax.set_yticks(np.arange(-0.5, data.shape[1], 256), minor=True)
-        ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+        ax.add_patch(rect)
     plt.xlabel("West-East")
     plt.ylabel("North-South")
 

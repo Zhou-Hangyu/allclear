@@ -162,21 +162,27 @@ def visualize_one_image(
     center cropping to focus on a specific part of the image and saves the visualization if a save directory is provided.
     """
 
-    def normalize(array):
+    def normalize(array, max_value, min_percentile=1, max_percentile=99):
         '''
         normalize: normalize a numpy array so all value are between 0 and 1
         '''
-        array_min, array_max = np.nanmin(array), np.nanmax(array)
-        return (array - array_min) / (array_max - array_min)
+        array = np.clip(array, 0, max_value)
+        array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
+        normalized_array = (array - array_min) / (array_max - array_min)
+        print(array_min, array_max, normalized_array.min(), normalized_array.max())
+        return np.clip(normalized_array, 0, 1) / 1
 
     plt.figure(figsize=(12, 12), dpi=dpi)
 
     data = None
     if msi is not None:
         msi_data = load_image_center_crop(msi, center_crop, center_crop_shape)
-        for channel in msi_channels:
-            msi_data[channel, ...] = normalize(msi_data[channel, ...])
-        data = msi_data
+        # for channel in msi_channels:
+        #     msi_data[channel, ...] = normalize(msi_data[channel, ...])
+        # # msi_data[msi_channels, ...] = normalize(msi_data[msi_channels, ...])
+        # msi_data = np.clip(msi_data, 0, 3000) / 3000
+        data = normalize(msi_data, 3000, min_percentile=1, max_percentile=99)
+        # data = msi_data
         plt.imshow(msi_data[msi_channels, ...].transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
     elif sar is not None:
         sar_data = load_image_center_crop(sar, center_crop, center_crop_shape)

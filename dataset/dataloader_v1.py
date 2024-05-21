@@ -244,3 +244,11 @@ class CRDataset(Dataset):
             return sample_stp, target_stp, time_differences
         else:
             return inputs, latlong
+
+# to use the dataloader, please run the following code
+# import json
+# with open('/share/hariharan/ck696/allclear_0520/experiments/dataset_curation_0520_NoNan/test_500_tx3.json') as f:
+#     metadata = json.load(f)
+# dataset = CRDataset(metadata, None, 3, None, mode="seq2point")
+# dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, drop_last=True)
+# for sample, target, time in dataloader: break

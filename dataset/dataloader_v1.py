@@ -61,6 +61,13 @@ def erode_dilate_cld_shd(cld_shd, mask_dilation_kernel=7, blur_kernel_size=3, bl
 
     return torch.cat([processed_cld, processed_shd], dim=0)
 
+def find_closest_timestamp_index(timestamps, given_timestamp, max_diff=2):
+    differences = [abs(dt - given_timestamp) for dt in timestamps]    
+    if min(differences).days > max_diff: 
+        return None
+    else:
+        return differences.index(min(differences))
+
 
 def random_opacity():
     """Generate a random opacity value."""
@@ -83,7 +90,7 @@ class CRDataset(Dataset):
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
-    def __init__(self, metadata, selected_rois, num_frames, clds_shds, mode="stp"):
+    def __init__(self, metadata, selected_rois, num_frames, clds_shds, mode="stp", max_diff=2):
         
         if mode == "stp":
             self.metadata = {ID: info for ID, info in metadata.items() if info["ROI"][0] in selected_rois}
@@ -95,8 +102,12 @@ class CRDataset(Dataset):
             self.metadata = metadata
             self.num_frames = num_frames
             self.mode = mode
-            
+            self.max_diff = max_diff
 
+            
+        self.sensor_channels = {"s2_toa": 13, 
+                                "s1": 2}
+            
     def __len__(self):
         return len(self.metadata.keys())
 
@@ -129,13 +140,13 @@ class CRDataset(Dataset):
                     image = center_crop(image, (256, 256))
                     
                 if sensor == "s2_toa":
-                    image = np.clip(image, 0, 10000) / 10000
+                    image = torch.clip(image, 0, 10000) / 10000
                 
                 elif sensor == "s1":
                     image[image<-40] = -40
-                    image[0] = np.clip(image[0] + 25, 0, 25) / 25
-                    image[1] = np.clip(image[1] + 32.5, 0, 32.5) / 32.5
-                    image = np.nan_to_num(image, nan=-1)
+                    image[0] = torch.clip(image[0] + 25, 0, 25) / 25
+                    image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
+                    image = torch.nan_to_num(image, nan=-1)
                     
                 inputs[sensor].append([timestamp, image])
                 
@@ -192,9 +203,44 @@ class CRDataset(Dataset):
             all_timestamps = sorted(set(timestamps))
             start_date = all_timestamps[0]
             time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in all_timestamps]
-            for sensor in inputs:
-                for i in range(len(inputs[sensor])):
-                    inputs[sensor][i][0] = str(inputs[sensor][i][0])
-            return inputs, time_differences
+            
+            # format the sample
+            output_sensors = ["s2_toa", "s1"]
+            sample_stp = torch.ones((self.num_frames,
+                                     sum([self.sensor_channels[sensor] for sensor in output_sensors]),
+                                     inputs[sensor][0][1].shape[-2],
+                                     inputs[sensor][0][1].shape[-1]))
+            
+            # Sample images
+            channel_start_index = 0
+            s2_toa_timestamps = list()
+            for sensor in output_sensors:
+                day_index = 0
+                for timestamp, image in inputs[sensor]:
+                    if sensor == "s2_toa": 
+                        s2_toa_timestamps.append(timestamp)
+                        sample_stp[day_index, channel_start_index:channel_start_index + image.shape[0], ...] = image
+                        day_index += 1
+                    elif sensor == "s1": 
+                        # Find the closest s2_toa timestamp
+                        # If the difference is greater than max_diff, skip the image
+                        s1_day_index = find_closest_timestamp_index(s2_toa_timestamps, timestamp, max_diff=self.max_diff)
+                        if s1_day_index == None: continue
+                        sample_stp[s1_day_index, channel_start_index:channel_start_index + image.shape[0], ...] = image
+            sample_stp = sample_stp.permute(1, 0, 2, 3)
+                        
+            # Target image
+            fpath = sample["target"][0][1]
+            with rs.open(fpath) as src:
+                image = src.read()
+            image = torch.from_numpy(image).float()
+            try:
+                image = F.center_crop(image, (256, 256))
+            except:
+                image = center_crop(image, (256, 256))
+            image = torch.clip(image, 0, 10000) / 10000
+            target_stp = image.unsqueeze(1)
+
+            return sample_stp, target_stp, time_differences
         else:
             return inputs, latlong

@@ -61,17 +61,29 @@ def erode_dilate_cld_shd(cld_shd, mask_dilation_kernel=7, blur_kernel_size=3, bl
 
     return torch.cat([processed_cld, processed_shd], dim=0)
 
+def random_opacity():
+    """Generate a random opacity value."""
+    return torch.rand(1).item() * 0.5
+
 def find_closest_timestamp_index(timestamps, given_timestamp, max_diff=2):
     differences = [abs(dt - given_timestamp) for dt in timestamps]    
-    if min(differences).days > max_diff: 
+    if min(differences).days > max_diff:
         return None
     else:
         return differences.index(min(differences))
 
-
-def random_opacity():
-    """Generate a random opacity value."""
-    return torch.rand(1).item() * 0.5
+def preprocess(image, sensor_name):
+    if sensor_name == "s2_toa":
+        image = torch.clip(image, 0, 10000) / 10000
+    elif sensor_name == "s1":
+        image[image < -40] = -40
+        image[0] = torch.clip(image[0] + 25, 0, 25) / 25
+        image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
+        image = torch.nan_to_num(image, nan=-1)
+    else:
+        print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
+        image = image
+    return image
 
 
 class CRDataset(Dataset):
@@ -112,15 +124,9 @@ class CRDataset(Dataset):
         return len(self.metadata.keys())
 
     def __getitem__(self, idx):
-        if self.mode == "stp":
-            sample = self.metadata[idx]
-            latlong = sample["ROI"][1]
-            sensors = sorted([sensor for sensor in sample.keys() if sensor != "ROI"])
-        elif self.mode == "seq2point":
-            sample = self.metadata[str(idx)]
-            latlong = sample["roi"][1]
-            sensors = sorted([sensor for sensor in sample.keys() if sensor != "roi"])
-            
+        sample = self.metadata[str(idx)]
+        latlong = sample["roi"][1]
+        sensors = sorted([sensor for sensor in sample.keys() if sensor != "roi"])
         if "s2_toa" not in sample:
             raise ValueError("The sample does not contain Sentinel-2 TOA data.")
 
@@ -138,27 +144,15 @@ class CRDataset(Dataset):
                     image = F.center_crop(image, (256, 256))
                 except:
                     image = center_crop(image, (256, 256))
-                    
-                if sensor == "s2_toa":
-                    image = torch.clip(image, 0, 10000) / 10000
-                
-                elif sensor == "s1":
-                    image[image<-40] = -40
-                    image[0] = torch.clip(image[0] + 25, 0, 25) / 25
-                    image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
-                    image = torch.nan_to_num(image, nan=-1)
-                    
+                image = preprocess(image, sensor)
                 inputs[sensor].append([timestamp, image])
-                
         # sort images by timestamp
         timestamps = []
         for sensor in sensors:
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
             timestamps.extend([timestamp for timestamp, _ in inputs[sensor]])
-            
-        
+
         if self.mode == "stp":
-        
             # synthetic cloud and shadow masks on s2_toa
             inputs_s2_toa = torch.stack(inputs["s2_toa"])
             inputs_cld_shd = torch.stack([erode_dilate_cld_shd(cld_shd) for cld_shd in inputs["cld_shd"]])
@@ -174,8 +168,7 @@ class CRDataset(Dataset):
             synthetic_inputs_s2_toa -= synthetic_clds_shds[:, 1, ...]
             inputs['s2_toa_synthetic'] = synthetic_inputs_s2_toa
 
-            # format the sample
-            # When a day is missing, insert 1s.
+            # format the sample (When a day is missing, insert 1s.)
             all_timestamps = sorted(set(timestamps))
             start_date = all_timestamps[0]
             end_date = all_timestamps[-1]

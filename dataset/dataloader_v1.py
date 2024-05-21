@@ -7,7 +7,7 @@ import rasterio as rs
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torchvision.transforms import GaussianBlur
-
+from torchvision.transforms.functional import center_crop
 
 
 def sample_cld_shd(clds_shds):
@@ -84,19 +84,32 @@ class CRDataset(Dataset):
     """
 
     def __init__(self, metadata, selected_rois, num_frames, clds_shds, mode="stp"):
-        self.metadata = {ID: info for ID, info in metadata.items() if info["ROI"][0] in selected_rois}
-        self.num_frames = num_frames
-        self.clds_shds = clds_shds
-        self.mode = mode
-
+        
+        if mode == "stp":
+            self.metadata = {ID: info for ID, info in metadata.items() if info["ROI"][0] in selected_rois}
+            self.num_frames = num_frames
+            self.clds_shds = clds_shds
+            self.mode = mode
+            
+        elif mode == "seq2point":
+            self.metadata = metadata
+            self.num_frames = num_frames
+            self.mode = mode
+            
 
     def __len__(self):
         return len(self.metadata.keys())
 
     def __getitem__(self, idx):
-        sample = self.metadata[idx]
-        latlong = sample["ROI"][1]
-        sensors = sorted([sensor for sensor in sample.keys() if sensor != "ROI"])
+        if self.mode == "stp":
+            sample = self.metadata[idx]
+            latlong = sample["ROI"][1]
+            sensors = sorted([sensor for sensor in sample.keys() if sensor != "ROI"])
+        elif self.mode == "seq2point":
+            sample = self.metadata[str(idx)]
+            latlong = sample["roi"][1]
+            sensors = sorted([sensor for sensor in sample.keys() if sensor != "roi"])
+            
         if "s2_toa" not in sample:
             raise ValueError("The sample does not contain Sentinel-2 TOA data.")
 
@@ -110,31 +123,47 @@ class CRDataset(Dataset):
                 with rs.open(fpath) as src:
                     image = src.read()
                 image = torch.from_numpy(image).float()
-                image = F.center_crop(image, (256, 256))
-                inputs[sensor].append((timestamp, image))
+                try:
+                    image = F.center_crop(image, (256, 256))
+                except:
+                    image = center_crop(image, (256, 256))
+                    
+                if sensor == "s2_toa":
+                    image = np.clip(image, 0, 10000) / 10000
+                
+                elif sensor == "s1":
+                    image[image<-40] = -40
+                    image[0] = np.clip(image[0] + 25, 0, 25) / 25
+                    image[1] = np.clip(image[1] + 32.5, 0, 32.5) / 32.5
+                    image = np.nan_to_num(image, nan=-1)
+                    
+                inputs[sensor].append([timestamp, image])
+                
         # sort images by timestamp
         timestamps = []
         for sensor in sensors:
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
             timestamps.extend([timestamp for timestamp, _ in inputs[sensor]])
-
-        # synthetic cloud and shadow masks on s2_toa
-        inputs_s2_toa = torch.stack(inputs["s2_toa"])
-        inputs_cld_shd = torch.stack([erode_dilate_cld_shd(cld_shd) for cld_shd in inputs["cld_shd"]])
-        synthetic_inputs_s2_toa = copy.deepcopy(inputs_s2_toa)
-        synthetic_clds_shds = torch.zeros_like(inputs_cld_shd, dtype=torch.float16)
-        for i in range(inputs_cld_shd.shape[0]):
-            sampled_cld_shd = erode_dilate_cld_shd(sample_cld_shd(self.clds_shds)) * random_opacity()
-            squared_cld_shd = square_cld_shd() * random_opacity()
-            synthetic_cld_shd = torch.max(sampled_cld_shd, squared_cld_shd)
-            synthetic_cld_shd[1] *= (synthetic_cld_shd[0] > 0)  # no shd on cld
-            synthetic_clds_shds[i] = synthetic_cld_shd  # Shape: (T, 2, H, W)
-        synthetic_inputs_s2_toa += synthetic_clds_shds[:, 0, ...]
-        synthetic_inputs_s2_toa -= synthetic_clds_shds[:, 1, ...]
-        inputs['s2_toa_synthetic'] = synthetic_inputs_s2_toa
-
-        # format the sample
+            
+        
         if self.mode == "stp":
+        
+            # synthetic cloud and shadow masks on s2_toa
+            inputs_s2_toa = torch.stack(inputs["s2_toa"])
+            inputs_cld_shd = torch.stack([erode_dilate_cld_shd(cld_shd) for cld_shd in inputs["cld_shd"]])
+            synthetic_inputs_s2_toa = copy.deepcopy(inputs_s2_toa)
+            synthetic_clds_shds = torch.zeros_like(inputs_cld_shd, dtype=torch.float16)
+            for i in range(inputs_cld_shd.shape[0]):
+                sampled_cld_shd = erode_dilate_cld_shd(sample_cld_shd(self.clds_shds)) * random_opacity()
+                squared_cld_shd = square_cld_shd() * random_opacity()
+                synthetic_cld_shd = torch.max(sampled_cld_shd, squared_cld_shd)
+                synthetic_cld_shd[1] *= (synthetic_cld_shd[0] > 0)  # no shd on cld
+                synthetic_clds_shds[i] = synthetic_cld_shd  # Shape: (T, 2, H, W)
+            synthetic_inputs_s2_toa += synthetic_clds_shds[:, 0, ...]
+            synthetic_inputs_s2_toa -= synthetic_clds_shds[:, 1, ...]
+            inputs['s2_toa_synthetic'] = synthetic_inputs_s2_toa
+
+            # format the sample
             # When a day is missing, insert 1s.
             all_timestamps = sorted(set(timestamps))
             start_date = all_timestamps[0]
@@ -158,5 +187,14 @@ class CRDataset(Dataset):
             sample_stp = sample_stp.permute(1, 0, 2, 3)
             inputs_cld_shd = inputs_cld_shd.permute(1, 0, 2, 3)
             return sample_stp, inputs_cld_shd, all_timestamps, latlong
+        
+        elif self.mode == "seq2point":
+            all_timestamps = sorted(set(timestamps))
+            start_date = all_timestamps[0]
+            time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in all_timestamps]
+            for sensor in inputs:
+                for i in range(len(inputs[sensor])):
+                    inputs[sensor][i][0] = str(inputs[sensor][i][0])
+            return inputs, time_differences
         else:
             return inputs, latlong

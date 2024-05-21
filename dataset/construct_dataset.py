@@ -44,9 +44,6 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
     """
     if tx <= 0:
         raise ValueError("tx must be greater than 0")
-    if mode not in ['testing', 'training']:
-        raise ValueError("Mode must be either 'testing' or 'training'.")
-
     def preprocess(sensor_df):
         sensor_df = sensor_df[sensor_df.nan_percentage == 0]
         sensor_df = sensor_df.drop_duplicates(subset=["capture_date", "roi"])
@@ -66,10 +63,10 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
         for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc="Processing ROIs (Testing)"):
             N = len(main_sensor_per_roi_df)
             used_patch_ids = set()
-            for frame_tx in range(N - tx):
-                if frame_tx in used_patch_ids:
+            for df_idx in range(N - tx):
+                if df_idx in used_patch_ids:
                     continue
-                sub_sequence = main_sensor_per_roi_df.iloc[frame_tx:frame_tx + tx + 1]
+                sub_sequence = main_sensor_per_roi_df.iloc[df_idx:df_idx + tx + 1]
                 if any(idx in used_patch_ids for idx in sub_sequence.index):
                     continue
                 if 1 not in sub_sequence['clear_image_flag'].values[1:-1]:  # make sure there is clear image within the time series
@@ -120,8 +117,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
                     if sensor_name == main_sensor:
                         continue
                     sensor_roi_df = sensor_df[sensor_df['roi'] == roi].copy()
-                    sensor_roi_df['capture_date'] = pd.to_datetime(sensor_roi_df['capture_date'])
-                    sensor_roi_df.sort_values(by='capture_date', inplace=True)
+                    sensor_roi_df = preprocess(sensor_roi_df)
                     sensor_roi_df = sensor_roi_df[
                         (sensor_roi_df['capture_date'] >= tx_min) & (sensor_roi_df['capture_date'] <= tx_max)
                         ]
@@ -141,7 +137,7 @@ def parse_arguments():
     parser.add_argument("--main-sensor", type=str, help="Main sensor to use for constructing the dataset", required=True, default='s2_toa')
     parser.add_argument("--main-sensor-metadata", type=str, help="Path to the main sensor metadata file", required=True)
     parser.add_argument("--auxiliary-sensors", type=str, nargs='+', help="List of auxiliary sensors", required=True, default=['s1', 'landsat8', 'landsat9'])
-    parser.add_argument("--auxiliary sensor-metadata", type=str, nargs='+', help="Path to the metadata files for auxiliary sensors", required=True)
+    parser.add_argument("--auxiliary-sensor-metadata", type=str, nargs='+', help="Path to the metadata files for auxiliary sensors", required=True)
     parser.add_argument("--output-dir", type=str, help="Output path", required=True, default='/scratch/allclear/metadata/v3/')
     parser.add_argument("--version", type=str, help="Version of the dataset", required=True, default='v3')
     args = parser.parse_args()
@@ -153,11 +149,8 @@ if __name__ == "__main__":
     main_sensor_metadata = pd.read_csv(args.main_sensor_metadata)
     auxiliary_sensor_metadata = {sensor: pd.read_csv(metadata) for sensor, metadata in zip(args.auxiliary_sensors, args.auxiliary_sensor_metadata)}
     sensors = {args.main_sensor: main_sensor_metadata, **auxiliary_sensor_metadata}
-    # s2_toa_metadata = pd.read_csv('/scratch/allclear/metadata/v3/s2_toa_dataset_500_metadata.csv')
-    # s1_metadata = pd.read_csv('/scratch/allclear/metadata/v3/s1_dataset_500_metadata.csv')
-    # landsat8_metadata = pd.read_csv('/scratch/allclear/metadata/v3/landsat8_dataset_500_metadata.csv')
-    # landsat9_metadata = pd.read_csv('/scratch/allclear/metadata/v3/landsat9_dataset_500_metadata.csv')
-
     dataset = construct_dataset(sensors, main_sensor=args.main_sensor, tx=args.tx, mode=args.mode)
-    with open(f'{args.output}/{args.mode}_{args.tx}_{args.version}.json', 'w') as f:
+    with open(f'{args.output_dir}/{args.mode}_tx{str(args.tx)}_{args.version}.json', 'w') as f:
         json.dump(dataset, f)
+    print(f"Found {len(dataset)} entries in the dataset")
+    print(f"Dataset saved to {args.output_dir}/{args.mode}_tx{str(args.tx)}_{args.version}.json")

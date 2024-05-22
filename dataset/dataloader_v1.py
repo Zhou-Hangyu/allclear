@@ -136,7 +136,10 @@ class CRDataset(Dataset):
             aux_sensors = ["s1", "landsat8", "landsat9"]
         if aux_data is None:
             aux_data = ['cld_shdw', 'dw']
-        self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
+        if selected_rois == "all":
+            self.dataset = dataset
+        else:
+            self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
         self.main_sensor = main_sensor
         self.aux_sensors = aux_sensors
         self.sensors = [main_sensor] + aux_sensors
@@ -161,8 +164,12 @@ class CRDataset(Dataset):
         return len(self.dataset.keys())
 
     def __getitem__(self, idx):
-        sample = self.dataset[idx]
+        try:
+            sample = self.dataset[idx]
+        except:
+            sample = self.dataset[str(idx)]
         latlong = sample["roi"][1]
+        inputs_cld_shdw = None
 
         # load in images as lists of (timestamp, image) pairs (also load in cloud and shadow masks for main sensor)
         inputs = {sensor: [] for sensor in
@@ -200,15 +207,19 @@ class CRDataset(Dataset):
             if "cld_shdw" in self.aux_data:
                 # inputs_cld_shdw = torch.stack([erode_dilate_cld_shdw(cld_shdw) for cld_shdw in inputs["input_cld_shdw"]])
                 inputs_cld_shdw = torch.stack([cld_shdw for _, cld_shdw in inputs["input_cld_shdw"]])
+            else:
+                inputs_cld_shdw = None
             if "dw" in self.aux_data:
                 inputs_dw = torch.stack([dw for _, dw in inputs["input_dw"]])
+            else:
+                inputs_dw = None
 
         # load in targets. If seq2seq (s2s), target use syncld; if seq2point (s2p), target use predefined target clear image.
         if self.target == "s2p":
             if "target" not in sample.keys():
                 raise ValueError("Target is not available in the sample.")
             timestamp, fpath = sample["target"][0]
-            image = load_image(fpath, self.center_crop_size)
+            image = load_image(fpath, self.channels["s2_toa"], self.center_crop_size)
             image = preprocess(image, self.main_sensor)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
@@ -216,11 +227,15 @@ class CRDataset(Dataset):
                 cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
                 cld_shdw = preprocess(cld_shdw, "cld_shdw")
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
+            else:
+                inputs["target_cld_shdw"] = None
             if "dw" in self.aux_data:
                 dw_fpath = fpath.replace("image", "dw")
                 dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
                 dw = preprocess(dw, "dw")
                 inputs["target_dw"] = dw.unsqueeze(0)
+            else:
+                inputs["target_dw"] = None
 
         elif self.target == "s2s":
             if self.clds_shdws is None:
@@ -295,13 +310,13 @@ class CRDataset(Dataset):
             elif self.target == "s2s":
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
 
-            return {
+            # Create the dictionary with potential None values
+            item_dict = {
                 "input_images": sample_stp,  # Shape: (C, T, H, W)
                 "target": target_image,  # Shape: (C, T, H, W)
                 "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,
                 # Shape: (2, T, H, W)
-                "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
-                                                                                        "target_cld_shdw"] is not None else None,
+                "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs["target_cld_shdw"] is not None else None,
                 # Shape: (2, T, H, W)
                 "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
@@ -310,6 +325,11 @@ class CRDataset(Dataset):
                 "time_differences": None,  # TODO: implement this correctly.
                 "latlong": latlong,
             }
+
+            # Filter out None values
+            item_dict = {k: v for k, v in item_dict.items() if v is not None}
+
+            return item_dict
 
 # to use the dataloader, please run the following code
 # import json

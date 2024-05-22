@@ -10,35 +10,37 @@ from torchvision.transforms import GaussianBlur
 from torchvision.transforms.functional import center_crop
 
 
-def sample_cld_shd(clds_shds):
+def sample_cld_shdw(clds_shdws):
     """Randomly sample clouds from existing cloud masks in the dataset."""
-    idx = torch.randint(0, len(clds_shds), (1,)).item()
-    cld_shd = clds_shds[idx]
+    idx = torch.randint(0, len(clds_shdws), (1,)).item()
+    cld_shdw = clds_shdws[idx]
     if torch.rand(1).item() > 0.5:
-        cld_shd = torch.flip(cld_shd, dims=[1])
+        cld_shdw = torch.flip(cld_shdw, dims=[1])
     if torch.rand(1).item() > 0.5:
-        cld_shd = torch.flip(cld_shd, dims=[2])
+        cld_shdw = torch.flip(cld_shdw, dims=[2])
     if torch.rand(1).item() > 0.5:
-        cld_shd = torch.rot90(cld_shd, k=1, dims=[1, 2])
-    return cld_shd
+        cld_shdw = torch.rot90(cld_shdw, k=1, dims=[1, 2])
+    return cld_shdw
 
-def square_cld_shd(image_size=256):
+
+def square_cld_shdw(image_size=256):
     """Generate square cloud & shadow masks."""
     mask_scale = np.random.choice([16, 32, 64])
     threshold = np.random.uniform(low=0.1, high=0.25)
     cld = (torch.rand((1, image_size, image_size)) < threshold / (mask_scale * 2) ** 2).float()
-    shd = (torch.rand((1, image_size, image_size)) < threshold / (mask_scale * 2) ** 2).float()
+    shdw = (torch.rand((1, image_size, image_size)) < threshold / (mask_scale * 2) ** 2).float()
     square_cld = F.max_pool2d(cld, mask_scale + 1, stride=1, padding=int((mask_scale + 1) // 2))
-    square_shd = F.max_pool2d(shd, mask_scale + 1, stride=1, padding=int((mask_scale + 1) // 2))
-    square_cld_shd = torch.cat([square_cld, square_shd], dim=0)
-    return square_cld_shd
+    square_shdw = F.max_pool2d(shdw, mask_scale + 1, stride=1, padding=int((mask_scale + 1) // 2))
+    square_cld_shdw = torch.cat([square_cld, square_shdw], dim=0)
+    return square_cld_shdw
 
-def erode_dilate_cld_shd(cld_shd, mask_dilation_kernel=7, blur_kernel_size=3, blur_sigma=1):
+
+def erode_dilate_cld_shdw(cld_shdw, mask_dilation_kernel=7, blur_kernel_size=3, blur_sigma=1):
     """
     Apply erosion and dilation to cloud and shadow masks.
 
     Args:
-        cld_shd (torch.tensor): A torch tensor of shape (2, h, w) containing cloud and shadow masks.
+        cld_shdw (torch.tensor): A torch tensor of shape (2, h, w) containing cloud and shadow masks.
         mask_dilation_kernel (int): The kernel size for the dilation operation.
         blur_kernel_size (int): The kernel size for the Gaussian blur.
         blur_sigma (float): The sigma for the Gaussian blur.
@@ -56,21 +58,37 @@ def erode_dilate_cld_shd(cld_shd, mask_dilation_kernel=7, blur_kernel_size=3, bl
         dilated_mask = blur_kernel(dilated_mask)
         return dilated_mask
 
-    processed_cld = process_mask(cld_shd[0])
-    processed_shd = process_mask(cld_shd[1])
+    processed_cld = process_mask(cld_shdw[0])
+    processed_shdw = process_mask(cld_shdw[1])
 
-    return torch.cat([processed_cld, processed_shd], dim=0)
+    return torch.cat([processed_cld, processed_shdw], dim=0)
+
 
 def random_opacity():
     """Generate a random opacity value."""
     return torch.rand(1).item() * 0.5
 
-def find_closest_timestamp_index(timestamps, given_timestamp, max_diff=2):
-    differences = [abs(dt - given_timestamp) for dt in timestamps]    
+
+def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max_diff=2):
+    differences = [abs(dt - aux_sensor_timestamp) for dt in main_sensor_timestamps]
     if min(differences).days > max_diff:
         return None
     else:
         return differences.index(min(differences))
+
+
+def load_image(fpath, channels=None, center_crop_size=(256, 256)):
+    with rs.open(fpath) as src:
+        if channels is None:
+            channels = list(range(src.count)) + 1
+        image = src.read(channels)
+    image = torch.from_numpy(image).float()
+    try:
+        image = F.center_crop(image, center_crop_size)
+    except:
+        image = center_crop(image, center_crop_size)
+    return image
+
 
 def preprocess(image, sensor_name):
     if sensor_name == "s2_toa":
@@ -80,7 +98,7 @@ def preprocess(image, sensor_name):
         image[0] = torch.clip(image[0] + 25, 0, 25) / 25
         image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
         image = torch.nan_to_num(image, nan=-1)
-    else:
+    else:  # TODO: Implement preprocessing for other sensors
         print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
         image = image
     return image
@@ -94,154 +112,209 @@ class CRDataset(Dataset):
 
     Example:
         data = {
-            1: {"ROI": "roi1234", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
-            2: {"ROI": "roi5678", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
-            3: {"ROI": "roi9101", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
+            1: {"roi": "roi1234", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
+            2: {"roi": "roi5678", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
+            3: {"roi": "roi9101", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
         }
         dataset = CRDataset('dataset.json', ['roi1', 'roi2'], 3)
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
-    def __init__(self, metadata, selected_rois, num_frames, clds_shds, mode="stp", max_diff=2):
-        
-        if mode == "stp":
-            self.metadata = {ID: info for ID, info in metadata.items() if info["ROI"][0] in selected_rois}
-            self.num_frames = num_frames
-            self.clds_shds = clds_shds
-            self.mode = mode
-            
-        elif mode == "seq2point":
-            self.metadata = metadata
-            self.num_frames = num_frames
-            self.mode = mode
-            self.max_diff = max_diff
+    def __init__(self,
+                 dataset,
+                 selected_rois,
+                 main_sensor="s2_toa",
+                 aux_sensors=None,
+                 aux_data=None,
+                 tx=3,
+                 center_crop_size=(256, 256),
+                 clds_shdws=None,
+                 format="stp",
+                 target="s2s",
+                 max_diff=2):
+        if aux_sensors is None:
+            aux_sensors = ["s1", "landsat8", "landsat9"]
+        if aux_data is None:
+            aux_data = ['cld_shdw', 'dw']
+        self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
+        self.main_sensor = main_sensor
+        self.aux_sensors = aux_sensors
+        self.sensors = [main_sensor] + aux_sensors
+        self.aux_data = aux_data
+        self.tx = tx
+        self.center_crop_size = center_crop_size
+        self.clds_shdws = clds_shdws
+        self.format = format
+        self.target = target
+        self.max_diff = max_diff
+        if self.format != "stp":
+            raise ValueError("The format is not supported.")
+        self.channels = {
+            "s2_toa": list(range(1, 14)),
+            "s1": [1, 2],
+            "landsat8": list(range(1, 12)),
+            "landsat9": list(range(1, 12)),
+            "cld_shdw": [2, 5]
+        }
 
-            
-        self.sensor_channels = {"s2_toa": 13, 
-                                "s1": 2}
-            
     def __len__(self):
-        return len(self.metadata.keys())
+        return len(self.dataset.keys())
 
     def __getitem__(self, idx):
-        sample = self.metadata[str(idx)]
+        sample = self.dataset[idx]
         latlong = sample["roi"][1]
-        sensors = sorted([sensor for sensor in sample.keys() if sensor != "roi"])
-        if "s2_toa" not in sample:
-            raise ValueError("The sample does not contain Sentinel-2 TOA data.")
 
-        # load in images as sets of (timestamp, image) pairs
-        inputs = {sensor: [] for sensor in sensors}
-        for sensor in sensors:
+        # load in images as lists of (timestamp, image) pairs (also load in cloud and shadow masks for main sensor)
+        inputs = {sensor: [] for sensor in
+                  self.sensors + ["input_cld_shdw", "input_dw", "target_cld_shdw", "target_dw"]}
+        timestamps = []
+        for sensor in self.sensors:
             sensor_inputs = sample[sensor]
             for sensor_input in sensor_inputs:
                 timestamp, fpath = sensor_input
                 timestamp = datetime.strptime(timestamp, "%Y-%m-%d")
-                with rs.open(fpath) as src:
-                    image = src.read()
-                image = torch.from_numpy(image).float()
-                try:
-                    image = F.center_crop(image, (256, 256))
-                except:
-                    image = center_crop(image, (256, 256))
+                image = load_image(fpath, self.channels[sensor], self.center_crop_size)
                 image = preprocess(image, sensor)
-                inputs[sensor].append([timestamp, image])
-        # sort images by timestamp
-        timestamps = []
-        for sensor in sensors:
+                inputs[sensor].append((timestamp, image))
+                timestamps.append(timestamp)
+                if sensor == self.main_sensor:
+                    if "cld_shdw" in self.aux_data:
+                        cld_shdw_fpath = fpath.replace("image", "cld_shdw")
+                        cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                        cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                        inputs["input_cld_shdw"].append((timestamp, cld_shdw))
+                    if "dw" in self.aux_data:
+                        dw_fpath = fpath.replace("image", "dw")
+                        dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
+                        dw = preprocess(dw, "dw")
+                        inputs["input_dw"].append((timestamp, dw))
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
-            timestamps.extend([timestamp for timestamp, _ in inputs[sensor]])
+        timestamps = sorted(set(timestamps))
+        timestamps_main_sensor = [timestamp for timestamp, _ in inputs[self.main_sensor]]
+        start_date, end_date = timestamps[0], timestamps[-1]
+        time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in
+                            timestamps]
 
-        if self.mode == "stp":
-            # synthetic cloud and shadow masks on s2_toa
-            inputs_s2_toa = torch.stack(inputs["s2_toa"])
-            inputs_cld_shd = torch.stack([erode_dilate_cld_shd(cld_shd) for cld_shd in inputs["cld_shd"]])
-            synthetic_inputs_s2_toa = copy.deepcopy(inputs_s2_toa)
-            synthetic_clds_shds = torch.zeros_like(inputs_cld_shd, dtype=torch.float16)
-            for i in range(inputs_cld_shd.shape[0]):
-                sampled_cld_shd = erode_dilate_cld_shd(sample_cld_shd(self.clds_shds)) * random_opacity()
-                squared_cld_shd = square_cld_shd() * random_opacity()
-                synthetic_cld_shd = torch.max(sampled_cld_shd, squared_cld_shd)
-                synthetic_cld_shd[1] *= (synthetic_cld_shd[0] > 0)  # no shd on cld
-                synthetic_clds_shds[i] = synthetic_cld_shd  # Shape: (T, 2, H, W)
-            synthetic_inputs_s2_toa += synthetic_clds_shds[:, 0, ...]
-            synthetic_inputs_s2_toa -= synthetic_clds_shds[:, 1, ...]
-            inputs['s2_toa_synthetic'] = synthetic_inputs_s2_toa
+        if self.format == "stp":  # TODO: refactor this code once more format is added.
+            inputs_main_sensor = torch.stack([image for _, image in inputs[self.main_sensor]])
+            if "cld_shdw" in self.aux_data:
+                # inputs_cld_shdw = torch.stack([erode_dilate_cld_shdw(cld_shdw) for cld_shdw in inputs["input_cld_shdw"]])
+                inputs_cld_shdw = torch.stack([cld_shdw for _, cld_shdw in inputs["input_cld_shdw"]])
+            if "dw" in self.aux_data:
+                inputs_dw = torch.stack([dw for _, dw in inputs["input_dw"]])
 
-            # format the sample (When a day is missing, insert 1s.)
-            all_timestamps = sorted(set(timestamps))
-            start_date = all_timestamps[0]
-            end_date = all_timestamps[-1]
-            tx = (end_date - start_date).days + 1
-            if tx != self.num_frames:
-                print(f"Error: {tx} != {self.num_frames}")
-                return None
-            output_sensors = ["s2_toa_synthetic"] + [sensor for sensor in sensors if sensor != "s2_toa"]
-            sample_stp = torch.ones((tx,
+        # load in targets. If seq2seq (s2s), target use syncld; if seq2point (s2p), target use predefined target clear image.
+        if self.target == "s2p":
+            if "target" not in sample.keys():
+                raise ValueError("Target is not available in the sample.")
+            timestamp, fpath = sample["target"][0]
+            image = load_image(fpath, self.center_crop_size)
+            image = preprocess(image, self.main_sensor)  # target by default is the main sensor
+            inputs["target"] = [(timestamp, image)]
+            if "cld_shdw" in self.aux_data:
+                cld_shdw_fpath = fpath.replace("image", "cld_shdw")
+                cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
+            if "dw" in self.aux_data:
+                dw_fpath = fpath.replace("image", "dw")
+                dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
+                dw = preprocess(dw, "dw")
+                inputs["target_dw"] = dw.unsqueeze(0)
+
+        elif self.target == "s2s":
+            if self.clds_shdws is None:
+                raise ValueError("Cloud and shadow masks are not available.")
+            synthetic_inputs_main_sensor = copy.deepcopy(inputs_main_sensor)
+            synthetic_clds_shdws = torch.zeros_like(inputs_cld_shdw, dtype=torch.float16)
+            for i in range(inputs_cld_shdw.shape[0]):
+                # sampled_cld_shdw = erode_dilate_cld_shdw(sample_cld_shdw(self.clds_shdws)) * random_opacity()
+                sampled_cld_shdw = sample_cld_shdw(self.clds_shdws) * random_opacity()
+                squared_cld_shdw = square_cld_shdw() * random_opacity()
+                synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
+                synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
+                synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
+            synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...]
+            synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...]
+            inputs['target'] = inputs[self.main_sensor]
+            inputs[self.main_sensor] = [(timestamp, syncld_main_sensor) for timestamp, syncld_main_sensor in
+                                        zip(timestamps_main_sensor, synthetic_inputs_main_sensor)]
+            inputs["target_cld_shdw"] = inputs_cld_shdw if "cld_shdw" in self.aux_data else None
+            inputs["input_cld_shdw"] = torch.max(inputs_cld_shdw, synthetic_clds_shdws)
+            inputs["input_cld_shdw"][1] *= (inputs["input_cld_shdw"][0] > 0)  # no shdw on cld
+            inputs["target_dw"] = inputs_dw if "dw" in self.aux_data else None
+
+        # load in inputs.
+        # format the sample (When a day is missing, insert 1s) (shape: (T, C, H, W) -> (C, T, H, W))
+        # for spatial-temporal patch (stp) format, we align aux images with the main one if they are within the max_diff
+        # and discard the rest of them to reduce the input sparsity.
+        if self.format != "stp":
+            raise ValueError(f"The {self.format} format is not supported.")
+        else:
+            output_sensors = self.sensors
+            sample_stp = torch.ones((self.tx,
                                      sum([inputs[sensor][0][1].shape[0] for sensor in output_sensors]),
                                      inputs[sensor][0][1].shape[-2],
                                      inputs[sensor][0][1].shape[-1]))
-            channel_start_index = 0
-            for sensor in output_sensors:
-                for timestamp, image in inputs[sensor]:
-                    day_index = (timestamp - start_date).days
-                    sample_stp[day_index, channel_start_index:channel_start_index + image.shape[0], ...] = image
-                channel_start_index += image.shape[0]
-            # swap axes to (C, T, H, W)
-            sample_stp = sample_stp.permute(1, 0, 2, 3)
-            inputs_cld_shd = inputs_cld_shd.permute(1, 0, 2, 3)
-            return sample_stp, inputs_cld_shd, all_timestamps, latlong
-        
-        elif self.mode == "seq2point":
-            all_timestamps = sorted(set(timestamps))
-            start_date = all_timestamps[0]
-            time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in all_timestamps]
-            
-            # format the sample
-            output_sensors = ["s2_toa", "s1"]
-            sample_stp = torch.ones((self.num_frames,
-                                     sum([self.sensor_channels[sensor] for sensor in output_sensors]),
-                                     inputs[sensor][0][1].shape[-2],
-                                     inputs[sensor][0][1].shape[-1]))
-            
-            # Sample images
-            channel_start_index = 0
-            s2_toa_timestamps = list()
-            for sensor in output_sensors:
-                day_index = 0
-                for timestamp, image in inputs[sensor]:
-                    if sensor == "s2_toa": 
-                        s2_toa_timestamps.append(timestamp)
-                        sample_stp[day_index, channel_start_index:channel_start_index + image.shape[0], ...] = image
-                        day_index += 1
-                    elif sensor == "s1": 
-                        # Find the closest s2_toa timestamp
-                        # If the difference is greater than max_diff, skip the image
-                        s1_day_index = find_closest_timestamp_index(s2_toa_timestamps, timestamp, max_diff=self.max_diff)
-                        if s1_day_index == None: continue
-                        sample_stp[s1_day_index, channel_start_index:channel_start_index + image.shape[0], ...] = image
-            sample_stp = sample_stp.permute(1, 0, 2, 3)
-                        
-            # Target image
-            fpath = sample["target"][0][1]
-            with rs.open(fpath) as src:
-                image = src.read()
-            image = torch.from_numpy(image).float()
-            try:
-                image = F.center_crop(image, (256, 256))
-            except:
-                image = center_crop(image, (256, 256))
-            image = torch.clip(image, 0, 10000) / 10000
-            target_stp = image.unsqueeze(1)
 
-            return sample_stp, target_stp, time_differences
-        else:
-            return inputs, latlong
+            # merge landsat8 and landsat9 into one sensor for less sparse input.
+            channel_start_index = 0
+            channel_start_indices = {}
+            for sensor in output_sensors:
+                if sensor == "landsat8" and "landsat9" in output_sensors:
+                    channel_start_indices[sensor] = channel_start_indices["landsat9"]
+                elif sensor == "landsat9" and "landsat8" in output_sensors:
+                    channel_start_indices[sensor] = channel_start_indices["landsat8"]
+                else:
+                    channel_start_indices[sensor] = channel_start_index
+                    channel_start_index += inputs[sensor][0][1].shape[0]
+
+            for sensor in output_sensors:
+                if sensor == self.main_sensor:
+                    day_index = 0
+                    for timestamp, image in inputs[sensor]:
+                        image_channel_size = image.shape[0]
+                        channel_start_index_sensor = channel_start_indices[sensor]
+                        sample_stp[day_index,
+                        channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
+                        day_index += 1
+                elif sensor in self.aux_sensors:
+                    for timestamp, image in inputs[sensor]:
+                        day_index = temporal_align_aux_sensors(timestamps_main_sensor, timestamp,
+                                                               max_diff=self.max_diff)
+                        if day_index == None: continue
+                        image_channel_size = image.shape[0]
+                        channel_start_index_sensor = channel_start_indices[sensor]
+                        sample_stp[day_index,
+                        channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
+
+            sample_stp = sample_stp.permute(1, 0, 2, 3)
+            if self.target == "s2p":
+                target_image = inputs["target"][0][1]
+                target_image = target_image.unsqueeze(1)
+            elif self.target == "s2s":
+                target_image = inputs_main_sensor.permute(1, 0, 2, 3)
+
+            return {
+                "input_images": sample_stp,  # Shape: (C, T, H, W)
+                "target": target_image,  # Shape: (C, T, H, W)
+                "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,
+                # Shape: (2, T, H, W)
+                "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
+                                                                                        "target_cld_shdw"] is not None else None,
+                # Shape: (2, T, H, W)
+                "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
+                "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
+                # Shape: (C, T, H, W)
+                "timestamps": None,  # TODO: implement this correctly.
+                "time_differences": None,  # TODO: implement this correctly.
+                "latlong": latlong,
+            }
 
 # to use the dataloader, please run the following code
 # import json
 # with open('/share/hariharan/ck696/allclear_0520/experiments/dataset_curation_0520_NoNan/test_500_tx3.json') as f:
 #     metadata = json.load(f)
-# dataset = CRDataset(metadata, None, 3, None, mode="seq2point")
+# dataset = CRDataset(metadata, None, 3, None, format="seq2point")
 # dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, drop_last=True)
 # for sample, target, time in dataloader: break

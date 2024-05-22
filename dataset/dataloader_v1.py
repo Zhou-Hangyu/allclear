@@ -123,6 +123,8 @@ def preprocess(image, sensor_name):
         image[0] = torch.clip(image[0] + 25, 0, 25) / 25
         image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
         image = torch.nan_to_num(image, nan=-1)
+    elif sensor_name in ["cld_shdw", "dw"]:
+        image = image
     else:  # TODO: Implement preprocessing for other sensors
         print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
         image = image

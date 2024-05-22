@@ -9,6 +9,9 @@ import torch.nn.functional as F
 from torchvision.transforms import GaussianBlur
 from torchvision.transforms.functional import center_crop
 
+from cProfile import Profile
+from pstats import SortKey, Stats
+
 
 def sample_cld_shdw(clds_shdws):
     """Randomly sample clouds from existing cloud masks in the dataset."""
@@ -23,7 +26,7 @@ def sample_cld_shdw(clds_shdws):
     return cld_shdw
 
 
-def square_cld_shdw(image_size=256):
+def square_cld_shdw_maxpool(image_size=256):
     """Generate square cloud & shadow masks."""
     mask_scale = np.random.choice([16, 32, 64])
     threshold = np.random.uniform(low=0.1, high=0.25)
@@ -34,6 +37,28 @@ def square_cld_shdw(image_size=256):
     square_cld_shdw = torch.cat([square_cld, square_shdw], dim=0)
     return square_cld_shdw
 
+
+def square_cld_shdw(image_size=256):
+    """Generate square cloud & shadow masks."""
+    mask_scale = np.random.choice([16, 32, 64])
+    threshold = np.random.uniform(low=0.1, high=0.25)
+    num_squares = int(threshold * image_size * image_size / (mask_scale * mask_scale))
+
+    cld = torch.zeros((1, image_size, image_size), dtype=torch.float32)
+    shdw = torch.zeros((1, image_size, image_size), dtype=torch.float32)
+
+    for _ in range(num_squares):
+        x = np.random.randint(0, image_size - mask_scale)
+        y = np.random.randint(0, image_size - mask_scale)
+        cld[:, y:y + mask_scale, x:x + mask_scale] = 1
+
+    for _ in range(num_squares):
+        x = np.random.randint(0, image_size - mask_scale)
+        y = np.random.randint(0, image_size - mask_scale)
+        shdw[:, y:y + mask_scale, x:x + mask_scale] = 1
+
+    square_cld_shdw = torch.cat([cld, shdw], dim=0)
+    return square_cld_shdw
 
 def erode_dilate_cld_shdw(cld_shdw, mask_dilation_kernel=7, blur_kernel_size=3, blur_sigma=1):
     """
@@ -80,6 +105,7 @@ def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max
 def load_image(fpath, channels=None, center_crop_size=(256, 256)):
     with rs.open(fpath) as src:
         if channels is None:
+            print(src.count)
             channels = list(range(src.count)) + 1
         image = src.read(channels)
     image = torch.from_numpy(image).float()
@@ -99,7 +125,7 @@ def preprocess(image, sensor_name):
         image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
         image = torch.nan_to_num(image, nan=-1)
     else:  # TODO: Implement preprocessing for other sensors
-        print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
+        # print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
         image = image
     return image
 
@@ -161,7 +187,8 @@ class CRDataset(Dataset):
         return len(self.dataset.keys())
 
     def __getitem__(self, idx):
-        sample = self.dataset[idx]
+        # with Profile() as prof:
+        sample = self.dataset[str(idx)]
         latlong = sample["roi"][1]
 
         # load in images as lists of (timestamp, image) pairs (also load in cloud and shadow masks for main sensor)
@@ -197,6 +224,7 @@ class CRDataset(Dataset):
 
         if self.format == "stp":  # TODO: refactor this code once more format is added.
             inputs_main_sensor = torch.stack([image for _, image in inputs[self.main_sensor]])
+            inputs_cld_shdw, inputs_dw = None, None
             if "cld_shdw" in self.aux_data:
                 # inputs_cld_shdw = torch.stack([erode_dilate_cld_shdw(cld_shdw) for cld_shdw in inputs["input_cld_shdw"]])
                 inputs_cld_shdw = torch.stack([cld_shdw for _, cld_shdw in inputs["input_cld_shdw"]])
@@ -234,8 +262,8 @@ class CRDataset(Dataset):
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
                 synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
                 synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...]
-            synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...]
+            synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+            synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
             inputs['target'] = inputs[self.main_sensor]
             inputs[self.main_sensor] = [(timestamp, syncld_main_sensor) for timestamp, syncld_main_sensor in
                                         zip(timestamps_main_sensor, synthetic_inputs_main_sensor)]
@@ -253,9 +281,9 @@ class CRDataset(Dataset):
         else:
             output_sensors = self.sensors
             sample_stp = torch.ones((self.tx,
-                                     sum([inputs[sensor][0][1].shape[0] for sensor in output_sensors]),
-                                     inputs[sensor][0][1].shape[-2],
-                                     inputs[sensor][0][1].shape[-1]))
+                                     sum([len(self.channels[sensor]) for sensor in output_sensors]),
+                                     self.center_crop_size[0],
+                                     self.center_crop_size[1]))
 
             # merge landsat8 and landsat9 into one sensor for less sparse input.
             channel_start_index = 0
@@ -267,7 +295,7 @@ class CRDataset(Dataset):
                     channel_start_indices[sensor] = channel_start_indices["landsat8"]
                 else:
                     channel_start_indices[sensor] = channel_start_index
-                    channel_start_index += inputs[sensor][0][1].shape[0]
+                    channel_start_index += len(self.channels[sensor])
 
             for sensor in output_sensors:
                 if sensor == self.main_sensor:
@@ -294,22 +322,24 @@ class CRDataset(Dataset):
                 target_image = target_image.unsqueeze(1)
             elif self.target == "s2s":
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
+            # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
 
             return {
                 "input_images": sample_stp,  # Shape: (C, T, H, W)
                 "target": target_image,  # Shape: (C, T, H, W)
-                "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,
-                # Shape: (2, T, H, W)
-                "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
-                                                                                        "target_cld_shdw"] is not None else None,
-                # Shape: (2, T, H, W)
-                "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
-                "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
-                # Shape: (C, T, H, W)
-                "timestamps": None,  # TODO: implement this correctly.
-                "time_differences": None,  # TODO: implement this correctly.
+                # "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,
+                # # Shape: (2, T, H, W)
+                # "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
+                #                                                                         "target_cld_shdw"] is not None else None,
+                # # Shape: (2, T, H, W)
+                # "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
+                # "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
+                # # Shape: (C, T, H, W)
+                # "timestamps": None,  # TODO: implement this correctly.
+                # "time_differences": None,  # TODO: implement this correctly.
                 "latlong": latlong,
             }
+
 
 # to use the dataloader, please run the following code
 # import json

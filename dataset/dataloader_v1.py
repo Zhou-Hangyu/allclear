@@ -211,12 +211,12 @@ class CRDataset(Dataset):
                 timestamps.append(timestamp)
                 if sensor == self.main_sensor:
                     if "cld_shdw" in self.aux_data:
-                        cld_shdw_fpath = fpath.replace("image", "cld_shdw")
+                        cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
                         cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
                         cld_shdw = preprocess(cld_shdw, "cld_shdw")
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
-                        dw_fpath = fpath.replace("image", "dw")
+                        dw_fpath = fpath.replace("s2_toa", "dw")
                         dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
                         dw = preprocess(dw, "dw")
                         inputs["input_dw"].append((timestamp, dw))
@@ -248,14 +248,14 @@ class CRDataset(Dataset):
             image = preprocess(image, self.main_sensor)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
-                cld_shdw_fpath = fpath.replace("image", "cld_shdw")
+                cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
                 cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
                 cld_shdw = preprocess(cld_shdw, "cld_shdw")
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
             else:
                 inputs["target_cld_shdw"] = None
             if "dw" in self.aux_data:
-                dw_fpath = fpath.replace("image", "dw")
+                dw_fpath = fpath.replace("s2_toa", "dw")
                 dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
                 dw = preprocess(dw, "dw")
                 inputs["target_dw"] = dw.unsqueeze(0)

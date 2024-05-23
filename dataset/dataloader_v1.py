@@ -219,6 +219,12 @@ class CRDataset(Dataset):
                             cld_shdw = preprocess(cld_shdw, "cld_shdw")
                         else:
                             cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
+
+                        # since (1) the cld_sw can be nan, (2) for where s2 image has very low values, the cld_shdw should be 1. since it is more lifelyu that the ROI is partially scanned
+                        mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                        cld_shdw[0][mask] = 1
+                        cld_shdw[1][mask] = 0
+                        cld_shdw = torch.nan_to_num(cld_shdw, nan=1)                         
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
                         dw_fpath = fpath.replace("s2_toa", "dw")
@@ -257,6 +263,10 @@ class CRDataset(Dataset):
                 if os.path.exists(cld_shdw_fpath):
                     cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
                     cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                    mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                    cld_shdw[0][mask] = 1
+                    cld_shdw[1][mask] = 0
+                    cld_shdw = torch.nan_to_num(cld_shdw, nan=1)   
                 else:
                     cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)

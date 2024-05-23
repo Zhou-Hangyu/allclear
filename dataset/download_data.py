@@ -27,6 +27,12 @@ COLLECTION_AND_BAND = {
 METADATA_GROUP = ["s1", "s2", "s2_toa", "landsat8", "landsat9", "aster"]
 
 
+def switch_gee_account(account_name):
+    """Switch to a different GEE account."""
+    credential_path = f'~/.config/earthengine/credentials_{account_name}'
+    os.environ['EARTHENGINE_CREDENTIALS'] = os.path.expanduser(credential_path)
+    ee.Initialize()
+
 def error_flagging(e, error_path):
     print(f"Error: {e} Error message saved to {error_path}.")
     with open(error_path, "a") as f:
@@ -187,6 +193,7 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
     metadata_path = img_path.replace(".tif", "_metadata.csv")
     error_path = img_path.replace(".tif", ".txt")
     if args.resume and os.path.exists(img_path) and not os.path.exists(error_path):
+        # TODO: add condition for corrupted files.
         if args.data_type in METADATA_GROUP:
             if os.path.exists(metadata_path):
                 return
@@ -254,6 +261,7 @@ def main_download_session(args):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Download datasets from GEE")
+    parser.add_argument("--gee-account", type=str, default="account1", help="GEE account name")
     parser.add_argument("--ee-project-id", type=str, help="Google Earth Engine project id")
     parser.add_argument("--data-type", type=str, help="type of data to download", required=True, choices=COLLECTION_AND_BAND.keys())
     parser.add_argument("--rois", type=str, help="path to the csv file containing the ROIs", required=True)
@@ -275,6 +283,7 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-    ee.Authenticate()
-    ee.Initialize(project=args.ee_project_id)
+    # ee.Authenticate()
+    # ee.Initialize(project=args.ee_project_id)
+    switch_gee_account(args.gee_account)
     main_download_session(args)

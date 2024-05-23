@@ -4,14 +4,18 @@ allclear/baselines/CTGAN/Pretrain
 
 baselines_retraining
 
-allclear/baselines/DiffCR2
-allclear/baselines/DiffCR3/experiments
-allclear/baselines/DiffCR3/.github
-allclear/baselines/DiffCR3/.ipynb_checkpoints
+allclear/baselines/PMAA/checkpoints0515
+allclear/baselines/PMAA/runs29
+allclear/baselines/PMAA/wandb
 
 
 allclear/baselines/SimpleUnet/diffusers_src/__pycache__
 allclear/baselines/SimpleUnet/diffusers_src/*/__pycache__
+
+baselines/SimpleUnet/diffusers_src/__pycache__/
+baselines/SimpleUnet/diffusers_src/loaders/__pycache__/
+baselines/SimpleUnet/diffusers_src/models/__pycache__/
+baselines/SimpleUnet/diffusers_src/models/transformers/__pycache__/
 
 allclear/baselines/U-TILISE/checkpoints
 temp
@@ -21,6 +25,12 @@ data
 experimental_scripts
 
 .idea
-
+.pyc
+.out
 .ipynb_checkpoints
-__pycache__
+*__pycache__*
+*.idea
+*.pyc
+*.out
+*.ipynb_checkpoints
+*__pycache__

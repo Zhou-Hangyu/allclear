@@ -1,4 +1,4 @@
-import copy
+import copy, os
 from datetime import datetime, timedelta
 import json
 import numpy as np
@@ -208,15 +208,26 @@ class CRDataset(Dataset):
                 image = load_image(fpath, self.channels[sensor], self.center_crop_size)
                 image = preprocess(image, sensor)
                 inputs[sensor].append((timestamp, image))
-                timestamps.append(timestamp)
                 if sensor == self.main_sensor:
+                    timestamps.append(timestamp)
                     if "cld_shdw" in self.aux_data:
-                        cld_shdw_fpath = fpath.replace("image", "cld_shdw")
-                        cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                        cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                        cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
+                        # the cld_shdw_fpath may not be available for all the timestamps, so we need to check
+                        # if the file does not exists, the cld_shdw will be set to all ones.
+                        if os.path.exists(cld_shdw_fpath):
+                            cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                            cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                        else:
+                            cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
+
+                        # since (1) the cld_sw can be nan, (2) for where s2 image has very low values, the cld_shdw should be 1. since it is more lifelyu that the ROI is partially scanned
+                        mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                        cld_shdw[0][mask] = 1
+                        cld_shdw[1][mask] = 0
+                        cld_shdw = torch.nan_to_num(cld_shdw, nan=1)                         
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
-                        dw_fpath = fpath.replace("image", "dw")
+                        dw_fpath = fpath.replace("s2_toa", "dw")
                         dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
                         dw = preprocess(dw, "dw")
                         inputs["input_dw"].append((timestamp, dw))
@@ -226,7 +237,7 @@ class CRDataset(Dataset):
         start_date, end_date = timestamps[0], timestamps[-1]
         time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in
                             timestamps]
-
+        
         if self.format == "stp":  # TODO: refactor this code once more format is added.
             inputs_main_sensor = torch.stack([image for _, image in inputs[self.main_sensor]])
             if "cld_shdw" in self.aux_data:
@@ -248,14 +259,21 @@ class CRDataset(Dataset):
             image = preprocess(image, self.main_sensor)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
-                cld_shdw_fpath = fpath.replace("image", "cld_shdw")
-                cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
+                if os.path.exists(cld_shdw_fpath):
+                    cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                    cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                    mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                    cld_shdw[0][mask] = 1
+                    cld_shdw[1][mask] = 0
+                    cld_shdw = torch.nan_to_num(cld_shdw, nan=1)   
+                else:
+                    cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
             else:
                 inputs["target_cld_shdw"] = None
             if "dw" in self.aux_data:
-                dw_fpath = fpath.replace("image", "dw")
+                dw_fpath = fpath.replace("s2_toa", "dw")
                 dw = load_image(dw_fpath, self.channels["dw"], self.center_crop_size)
                 dw = preprocess(dw, "dw")
                 inputs["target_dw"] = dw.unsqueeze(0)
@@ -337,6 +355,7 @@ class CRDataset(Dataset):
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
 
             # Create the dictionary with potential None values
+
             item_dict = {
                 "input_images": sample_stp,  # Shape: (C, T, H, W)
                 "target": target_image,  # Shape: (C, T, H, W)
@@ -348,7 +367,7 @@ class CRDataset(Dataset):
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
                 # Shape: (C, T, H, W)
                 "timestamps": None,  # TODO: implement this correctly.
-                "time_differences": None,  # TODO: implement this correctly.
+                "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
                 "latlong": latlong,
             }
 

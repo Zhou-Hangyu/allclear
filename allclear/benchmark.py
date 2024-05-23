@@ -22,7 +22,7 @@ torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of
 
 from allclear import CRDataset
 from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE, PMAA, DiffCR
-from baselines.UnCRtainTS.model.parse_args import create_parser
+
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -354,6 +354,7 @@ def parse_arguments():
 if __name__ == "__main__":
     benchmark_args = parse_arguments()
     if benchmark_args.model_name == "uncrtaints":
+        from baselines.UnCRtainTS.model.parse_args import create_parser
         uc_args = create_parser(mode="test").parse_args([
             '--experiment_name', benchmark_args.uc_exp_name,
             '--root1', benchmark_args.uc_root1,

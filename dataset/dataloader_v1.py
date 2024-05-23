@@ -1,4 +1,4 @@
-import copy
+import copy, os
 from datetime import datetime, timedelta
 import json
 import numpy as np
@@ -212,8 +212,13 @@ class CRDataset(Dataset):
                     timestamps.append(timestamp)
                     if "cld_shdw" in self.aux_data:
                         cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
-                        cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                        cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                        # the cld_shdw_fpath may not be available for all the timestamps, so we need to check
+                        # if the file does not exists, the cld_shdw will be set to all ones.
+                        if os.path.exists(cld_shdw_fpath):
+                            cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                            cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                        else:
+                            cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
                         dw_fpath = fpath.replace("s2_toa", "dw")
@@ -249,8 +254,11 @@ class CRDataset(Dataset):
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
                 cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
-                cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                if os.path.exists(cld_shdw_fpath):
+                    cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                    cld_shdw = preprocess(cld_shdw, "cld_shdw")
+                else:
+                    cld_shdw = torch.ones((2, self.center_crop_size[0], self.center_crop_size[1]))
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
             else:
                 inputs["target_cld_shdw"] = None

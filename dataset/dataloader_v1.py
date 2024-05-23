@@ -208,8 +208,8 @@ class CRDataset(Dataset):
                 image = load_image(fpath, self.channels[sensor], self.center_crop_size)
                 image = preprocess(image, sensor)
                 inputs[sensor].append((timestamp, image))
-                timestamps.append(timestamp)
                 if sensor == self.main_sensor:
+                    timestamps.append(timestamp)
                     if "cld_shdw" in self.aux_data:
                         cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
                         cld_shdw = load_image(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
@@ -226,7 +226,7 @@ class CRDataset(Dataset):
         start_date, end_date = timestamps[0], timestamps[-1]
         time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in
                             timestamps]
-
+        
         if self.format == "stp":  # TODO: refactor this code once more format is added.
             inputs_main_sensor = torch.stack([image for _, image in inputs[self.main_sensor]])
             if "cld_shdw" in self.aux_data:
@@ -337,6 +337,7 @@ class CRDataset(Dataset):
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
 
             # Create the dictionary with potential None values
+
             item_dict = {
                 "input_images": sample_stp,  # Shape: (C, T, H, W)
                 "target": target_image,  # Shape: (C, T, H, W)
@@ -348,7 +349,7 @@ class CRDataset(Dataset):
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
                 # Shape: (C, T, H, W)
                 "timestamps": None,  # TODO: implement this correctly.
-                "time_differences": None,  # TODO: implement this correctly.
+                "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
                 "latlong": latlong,
             }
 

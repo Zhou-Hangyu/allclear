@@ -1,10 +1,13 @@
 import ee
 import os
+import shutil
 import pandas as pd
 from datetime import datetime, timedelta
 import argparse
 import geemap
 from tqdm import tqdm
+from time import sleep
+import rasterio as rs
 from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 from multiprocessing import Pool
@@ -27,11 +30,24 @@ COLLECTION_AND_BAND = {
 METADATA_GROUP = ["s1", "s2", "s2_toa", "landsat8", "landsat9", "aster"]
 
 
+# def switch_gee_account(account_name):
+#     """Switch to a different GEE account."""
+#     credential_path = f'~/.config/earthengine/credentials_{account_name}'
+#     os.environ['EARTHENGINE_CREDENTIALS'] = os.path.expanduser(credential_path)
+#     ee.Initialize()
+
 def switch_gee_account(account_name):
     """Switch to a different GEE account."""
-    credential_path = f'~/.config/earthengine/credentials_{account_name}'
-    os.environ['EARTHENGINE_CREDENTIALS'] = os.path.expanduser(credential_path)
+    credential_source_path = f'~/.config/earthengine/credentials_{account_name}'
+    credential_source_path = os.path.expanduser(credential_source_path)
+    credential_dest_path = os.path.expanduser('~/.config/earthengine/credentials')
+
+    # Copy the credential file to the default location
+    shutil.copyfile(credential_source_path, credential_dest_path)
+
+    # Initialize the Earth Engine API
     ee.Initialize()
+
 
 def error_flagging(e, error_path):
     print(f"Error: {e} Error message saved to {error_path}.")
@@ -202,28 +218,41 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
 
     start_date_str = date.strftime("%Y-%m-%d")
     end_date_str = (date + timedelta(days=1)).strftime("%Y-%m-%d")
-    try:
-        if args.data_type == "cld_shdw":
-            img = download_cloud_shadow(roi, start_date_str, end_date_str)
-            if img is None:
-                return
-        else:
-            collection = ee.ImageCollection(collection_id).filterDate(start_date_str, end_date_str).filterBounds(roi)
-            if collection.size().getInfo() == 0:
-                return
-            collection = collection.map(lambda img: img.clip(roi))
-            if args.data_type in ["s2", "s2_toa", "dw", "s1", "landsat8", "landsat9"]:
-                img = collection.median().select(bands).clip(roi)
+
+    retry_count = 0
+    delay = 1
+
+    while retry_count < 5:
+        try:
+            if args.data_type == "cld_shdw":
+                img = download_cloud_shadow(roi, start_date_str, end_date_str)
+                if img is None:
+                    return
             else:
-                raise NotImplementedError
-        download_cog(img, img_path, scale=args.res, crs=crs, region=roi)
-        if args.data_type in METADATA_GROUP:
-            probe = collection.first().select(bands[0])
-            download_metadata(probe, crs, metadata_path, args.data_type)
-        if os.path.exists(error_path):
-            os.remove(error_path)
-    except Exception as e:
-        error_flagging(e, error_path)
+                collection = ee.ImageCollection(collection_id).filterDate(start_date_str, end_date_str).filterBounds(roi)
+                if collection.size().getInfo() == 0:
+                    return
+                collection = collection.map(lambda img: img.clip(roi))
+                if args.data_type in ["s2", "s2_toa", "dw", "s1", "landsat8", "landsat9"]:
+                    img = collection.median().select(bands).clip(roi)
+                else:
+                    raise NotImplementedError
+            download_cog(img, img_path, scale=args.res, crs=crs, region=roi)
+            if args.data_type in METADATA_GROUP:
+                probe = collection.first().select(bands[0])
+                download_metadata(probe, crs, metadata_path, args.data_type)
+            if os.path.exists(error_path):
+                os.remove(error_path)
+        except Exception as e:
+            if "Quota exceeded" in str(e) or "Too Many Requests" in str(e):
+                sleep(delay)
+                retry_count += 1
+                delay *= 2
+                if retry_count < 5:
+                    continue
+            error_flagging(e, error_path)
+            retry_count = 5
+            break
 
 
 def process_roi(roi_chunk):

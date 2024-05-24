@@ -348,6 +348,7 @@ def parse_arguments():
 
     su_args = parser.add_argument_group("PMAA Arguments")
     su_args.add_argument("--pmaa-model", type=str, default="new", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
+    su_args.add_argument("--pmaa-checkpoint", type=str, default='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth', help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
     args = parser.parse_args()
     return args
 

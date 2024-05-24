@@ -479,20 +479,26 @@ class PMAA(BaseModel):
 
         if "ck696" in os.getcwd():
             sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA/model")
-            if args.pmaa_model == "new":
-                checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
-            elif args.pmaa_model == "old":
-                checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
-            else:
-                raise ValueError("Invalid model type")
+        #     if args.pmaa_model == "new":
+        #         checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
+        #     elif args.pmaa_model == "old":
+        #         checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
+        #     else:
+        #         raise ValueError("Invalid model type")
         else:
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA/model")
-            if args.pmaa_model == "new":
-                checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
-            elif args.pmaa_model == "old":
-                checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
-            else:
-                raise ValueError("Invalid model type")
+        #     if args.pmaa_model == "new":
+        #         checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
+        #     elif args.pmaa_model == "old":
+        #         checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
+        #     else:
+        #         raise ValueError("Invalid model type")
+        
+        checkpoint = args.pmaa_checkpoint
+            
+        print(f"====== PMAA ======")
+        print(f"Using PMAA model: {args.pmaa_model}")
+        print(f"Using PMAA checkpoint: {checkpoint}")
 
         from pmaa import PMAA
         self.model = PMAA(32, 4)

@@ -209,7 +209,6 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
     metadata_path = img_path.replace(".tif", "_metadata.csv")
     error_path = img_path.replace(".tif", ".txt")
     if args.resume and os.path.exists(img_path) and not os.path.exists(error_path):
-        # TODO: add condition for corrupted files.
         if args.data_type in METADATA_GROUP:
             if os.path.exists(metadata_path):
                 return
@@ -243,6 +242,7 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
                 download_metadata(probe, crs, metadata_path, args.data_type)
             if os.path.exists(error_path):
                 os.remove(error_path)
+            break
         except Exception as e:
             if "Quota exceeded" in str(e) or "Too Many Requests" in str(e):
                 sleep(delay)
@@ -251,7 +251,6 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
                 if retry_count < 5:
                     continue
             error_flagging(e, error_path)
-            retry_count = 5
             break
 
 

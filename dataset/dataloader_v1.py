@@ -118,6 +118,7 @@ def load_image(fpath, channels=None, center_crop_size=(256, 256)):
 def preprocess(image, sensor_name):
     if sensor_name == "s2_toa":
         image = torch.clip(image, 0, 10000) / 10000
+        image = torch.nan_to_num(image, nan=0)
     elif sensor_name == "s1":
         image[image < -40] = -40
         image[0] = torch.clip(image[0] + 25, 0, 25) / 25

@@ -209,11 +209,16 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
     metadata_path = img_path.replace(".tif", "_metadata.csv")
     error_path = img_path.replace(".tif", ".txt")
     if args.resume and os.path.exists(img_path) and not os.path.exists(error_path):
-        if args.data_type in METADATA_GROUP:
-            if os.path.exists(metadata_path):
+        try:    # check corrupted files
+            with rs.open(img_path) as src:
+                src.read(1, window=rs.windows.Window(0, 0, 1, 1))
+            if args.data_type in METADATA_GROUP:
+                if os.path.exists(metadata_path):
+                    return
+            else:
                 return
-        else:
-            return
+        except Exception as e:
+            error_flagging(e, error_path)
 
     start_date_str = date.strftime("%Y-%m-%d")
     end_date_str = (date + timedelta(days=1)).strftime("%Y-%m-%d")

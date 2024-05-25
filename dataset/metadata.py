@@ -58,8 +58,13 @@ def process_general_data(df):
     tqdm.pandas(desc="Processing General Satellite Patches")
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-        result = nan_percentage(row)
-        results.append(pd.Series(result, name=index))
+        try: # TODO: fix corrupted images during error handling
+            result = nan_percentage(row)
+            results.append(pd.Series(result, name=index))
+        except Exception as e:
+            print(f"Error: {e}. Skipping patch {row['image_file_path']}")
+            df.drop(index, inplace=True)
+            continue
 
     results_df = pd.concat(results, axis=1).transpose()
     return df.merge(results_df, left_index=True, right_index=True, how="inner")
@@ -70,10 +75,15 @@ def process_s2_data(df):
     df["cloud_shadow_file_path"] = df["image_file_path"].replace("s2_toa", "cld_shdw", regex=True)
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-        result1 = nan_percentage(row)
-        result2 = cloud_shadow_percentage(row)
-        result = {**result1, **result2}
-        results.append(pd.Series(result, name=index))
+        try: # TODO: fix corrupted images during error handling
+            result1 = nan_percentage(row)
+            result2 = cloud_shadow_percentage(row)
+            result = {**result1, **result2}
+            results.append(pd.Series(result, name=index))
+        except Exception as e:
+            print(f"Error: {e}. Skipping patch {row['image_file_path']}")
+            df.drop(index, inplace=True)
+            continue
 
     results_df = pd.concat(results, axis=1).transpose()
     return df.merge(results_df, left_index=True, right_index=True, how="inner")
@@ -183,12 +193,15 @@ if __name__ == "__main__":
     # Command: python -m dataset.metadata
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
     ROIS_METADATA = pd.read_csv("/share/hariharan/ck696/Decloud/UNet/ROI/sampled_rois_0514/v3_distribution_train_20Ksamples.csv")
-    SELECTED_ROIS_FNAME = "dataset_500.txt"
+    # SELECTED_ROIS_FNAME = "dataset_500.txt"
+    SELECTED_ROIS_FNAME = "train_9k.txt"
     with open(f"/scratch/allclear/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
         SELECTED_ROIS = f.read().splitlines()
     DATE_RANGE = [f'2022_{i}' for i in range(1, 13)]
-    SATS = ['s1', 's2_toa', 'cld_shdw', 'dw', 'landsat8']
-    WORKERS=8
+    # SATS = ['s1', 's2_toa', 'cld_shdw', 'dw', 'landsat8', 'landsat9']
+    # SATS = ['s2_toa']
+    SATS = ['s1', 'cld_shdw', 'dw', 'landsat8', 'landsat9']
+    WORKERS=32
 
     # Find all tiles
     metadata = find_all_tiles(DATA_PATH, SELECTED_ROIS, DATE_RANGE, SATS, ROIS_METADATA)

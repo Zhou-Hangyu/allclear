@@ -30,22 +30,12 @@ COLLECTION_AND_BAND = {
 METADATA_GROUP = ["s1", "s2", "s2_toa", "landsat8", "landsat9", "aster"]
 
 
-# def switch_gee_account(account_name):
-#     """Switch to a different GEE account."""
-#     credential_path = f'~/.config/earthengine/credentials_{account_name}'
-#     os.environ['EARTHENGINE_CREDENTIALS'] = os.path.expanduser(credential_path)
-#     ee.Initialize()
-
 def switch_gee_account(account_name):
     """Switch to a different GEE account."""
     credential_source_path = f'~/.config/earthengine/credentials_{account_name}'
     credential_source_path = os.path.expanduser(credential_source_path)
     credential_dest_path = os.path.expanduser('~/.config/earthengine/credentials')
-
-    # Copy the credential file to the default location
     shutil.copyfile(credential_source_path, credential_dest_path)
-
-    # Initialize the Earth Engine API
     ee.Initialize()
 
 
@@ -142,11 +132,10 @@ def add_cld_shdw_mask(img):
     cld_msk_30 = cld_prb.gt(30).focalMin(2).focalMax(4, iterations=2).reproject(**{'crs': img.select([0]).projection(), 'scale': 10}).rename("clouds_30")
     img = img.addBands(ee.Image([img, cld_prb, cld_msk_30]))
     # Add shadow band
-    not_water = img.select("SCL").neq(6)
-    shadow_azimuth = ee.Number(90).subtract(ee.Number(img.get("MEAN_SOLAR_AZIMUTH_ANGLE")))
-
     # Identify dark NIR pixels that are not water (potential cloud shadow pixels).
+    not_water = img.select("SCL").neq(6)
     dark_pixels = img.select('B8').lt(0.30*SR_BAND_SCALE).multiply(not_water).rename('dark_pixels').focalMin(2).focalMax(5)
+    shadow_azimuth = ee.Number(90).subtract(ee.Number(img.get("MEAN_SOLAR_AZIMUTH_ANGLE")))
     cld_proj = (img.select('clouds_30')
         .directionalDistanceTransform(shadow_azimuth, CLD_PRJ_DIST*10)
         .reproject(**{'crs': img.select(0).projection(), 'scale': 200})
@@ -176,6 +165,7 @@ def add_cld_shdw_mask(img):
     return img.addBands(ee.Image([shadows_thres_20, shadows_thres_25, shadows_thres_30]))
 
 def download_cloud_shadow(roi, start_date, end_date):
+    """Adopted from https://developers.google.com/earth-engine/tutorials/community/sentinel-2-s2cloudless"""
     s2_sr_collection = ee.ImageCollection("COPERNICUS/S2_SR").filterBounds(roi).filterDate(start_date, end_date)
     s2_cloudless_collection = ee.ImageCollection("COPERNICUS/S2_CLOUD_PROBABILITY").filterBounds(roi).filterDate(start_date, end_date)
     s2_sr_cloud_collection = ee.ImageCollection(
@@ -209,16 +199,24 @@ def process_date(roi, roi_id, crs, date, collection_id, bands):
     metadata_path = img_path.replace(".tif", "_metadata.csv")
     error_path = img_path.replace(".tif", ".txt")
     if args.resume and os.path.exists(img_path) and not os.path.exists(error_path):
-        try:    # check corrupted files
-            with rs.open(img_path) as src:
-                src.read(1, window=rs.windows.Window(0, 0, 1, 1))
+        if args.check_corruption:
+            try:
+                with rs.open(img_path) as src:
+                    src.read(1, window=rs.windows.Window(0, 0, 1, 1))
+                if args.data_type in METADATA_GROUP:
+                    if os.path.exists(metadata_path):
+                        return
+                else:
+                    return
+            except Exception as e:
+                error_flagging(e, error_path)
+        else:
             if args.data_type in METADATA_GROUP:
                 if os.path.exists(metadata_path):
                     return
             else:
                 return
-        except Exception as e:
-            error_flagging(e, error_path)
+
 
     start_date_str = date.strftime("%Y-%m-%d")
     end_date_str = (date + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -311,6 +309,7 @@ def parse_arguments():
     parser.add_argument("--workers", type=int, default=1, help="Number of workers to use for downloading")
     parser.add_argument("--quiet", action=argparse.BooleanOptionalAction, help="Suppress processing step's status updates.")
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, help="Resume downloading from where it left off or start over")
+    parser.add_argument("--check-corruption", action=argparse.BooleanOptionalAction, help="Check if the downloaded image is corrupted")
     args = parser.parse_args()
     return args
 

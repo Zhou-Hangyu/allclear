@@ -335,6 +335,7 @@ def parse_arguments():
     uc_args.add_argument("--uc-root2", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 2 for UnCRtainTS")
     uc_args.add_argument("--uc-root3", type=str, default="/share/hariharan/cloud_removal/SEN12MSCR", help="Root 3 for UnCRtainTS")
     uc_args.add_argument("--uc-weight-folder", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/results", help="Folder containing weights for UnCRtainTS")
+    uc_args.add_argument("--uc-s1", type=int, default=0, help="0: No Sentinel-1, 1: Include Sentinel-1")
 
     su_args = parser.add_argument_group("Simple3DUnet Arguments")
     su_args.add_argument("--su-image-size", type=int, default=256, help="Image size for Simple3DUnet")

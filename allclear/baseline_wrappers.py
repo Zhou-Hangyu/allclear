@@ -5,6 +5,10 @@ from datetime import datetime
 import torch
 import torch.nn.functional as F
 
+import logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
+
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
     sys.path.append("/share/hariharan/ck696/allclear/baselines")
@@ -65,7 +69,6 @@ class UnCRtainTS(BaseModel):
 
         ckpt_n = f"_epoch_{self.config.resume_at}" if self.config.resume_at > 0 else ""
         load_checkpoint(self.config, self.config.weight_folder, self.model, f"model{ckpt_n}")
-
         self.model.eval()
 
     def get_model_config(self):
@@ -75,6 +78,10 @@ class UnCRtainTS(BaseModel):
         from baselines.UnCRtainTS.model.src.utils import str2list
         from baselines.UnCRtainTS.model.parse_args import create_parser
         parser = create_parser(mode="test")
+        logger.info(f"Using UnCRtainTS config: {self.args.baseline_base_path}")
+        logger.info(f"Using UnCRtainTS weight_folder: {self.args.weight_folder}")
+        logger.info(f"Using UnCRtainTS experiment_name: {self.args.experiment_name}")
+
         conf_path = os.path.join(self.args.baseline_base_path, self.args.weight_folder, self.args.experiment_name, "conf.json")
         with open(conf_path, "r") as f:
             model_config = json.load(f)
@@ -114,6 +121,14 @@ class UnCRtainTS(BaseModel):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
 
+        # if self.args.uc_s1 == 0: 
+        #     pass
+        # else:
+        #     # inputs["input_images"] is of size (B, T, C=13, H, W) to (B, T, C=15, H, W), the last two bands are zeros
+        #     buffer = torch.zeros((inputs["input_images"].shape[0], inputs["input_images"].shape[1], 2, inputs["input_images"].shape[3], inputs["input_images"].shape[4])).to(self.device)
+        #     inputs["input_images"] = torch.cat((inputs["input_images"], buffer), dim=2)
+        #     inputs["target"] = torch.cat((inputs["target"], buffer[:, 0:1]), dim=2)
+
         if self.args.eval_mode == "sr":
             inputs["input_images"] = s2_boa2toa(inputs["input_images"])
             inputs["target"] = s2_boa2toa(inputs["target"])
@@ -139,7 +154,15 @@ class UnCRtainTS(BaseModel):
         # dates = torch.tensor(s2_td, dtype=torch.float32).to(self.device)
         dates = capture_dates - self.S1_LAUNCH
 
+        if self.args.uc_s1 == 0:
+            pass
+        else:
+            buffer = torch.zeros((inputs["input_images"].shape[0], inputs["input_images"].shape[1], 2, inputs["input_images"].shape[3], inputs["input_images"].shape[4])).to(self.device)
+            input_imgs = torch.cat((input_imgs, buffer), dim=2)
+            target_imgs = torch.cat((target_imgs, buffer[:, 0:1]), dim=2)
+
         model_inputs = {"A": input_imgs, "B": target_imgs, "dates": dates, "masks": masks}
+        
         with torch.no_grad():
             self.model.set_input(model_inputs)
             self.model.forward()
@@ -154,6 +177,7 @@ class UnCRtainTS(BaseModel):
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
         # return out, var
+        print(out.shape)
         return {"output": out, "variance": var}
 
 

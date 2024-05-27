@@ -73,11 +73,14 @@ def cloud_mask_threshold(cloud_prob_map, threshold=30):
     return cloud_mask
 
 
-def load_image_center_crop(image, center_crop=False, size=(256, 256)):
+def load_image_center_crop(image, channels=None, center_crop=False, size=(256, 256)):
     """Load an image and optionally apply a center crop. Image shape: [C, H, W]."""
     if isinstance(image, str):
         with rs.open(image) as src:
-            data = src.read()
+            if channels is not None:
+                data = src.read(channels)
+            else:
+                data = src.read()
     else:
         data = image
     if center_crop:
@@ -94,11 +97,10 @@ def visualize_one_image(
     msi_channels=(3, 2, 1),
     sar=None,
     metadata=None,
-    cloud=None,
-    cloud_channel=None,
+    cld_shdw=None,
+    cloud_channel=2,
+    shadow_channel=5,
     cloud_color="red",
-    shadow=None,
-    shadow_channel=None,
     shadow_color="blue",
     lulc=None,
     lulc_channel=0,
@@ -174,23 +176,16 @@ def visualize_one_image(
 
     plt.figure(figsize=(12, 12), dpi=dpi)
 
-    data = None
     if msi is not None:
-        msi_data = load_image_center_crop(msi, center_crop, center_crop_shape)
-        # for channel in msi_channels:
-        #     msi_data[channel, ...] = normalize(msi_data[channel, ...])
-        # # msi_data[msi_channels, ...] = normalize(msi_data[msi_channels, ...])
-        # msi_data = np.clip(msi_data, 0, 3000) / 3000
-        data = normalize(msi_data, max_value=3000, min_percentile=1, max_percentile=99)
-        # data = msi_data
+        msi_data = load_image_center_crop(msi, center_crop=center_crop, size=center_crop_shape)
+        msi_data = normalize(msi_data, max_value=3000, min_percentile=1, max_percentile=99)
         plt.imshow(msi_data[msi_channels, ...].transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
     elif sar is not None:
-        sar_data = load_image_center_crop(sar, center_crop, center_crop_shape)
+        sar_data = load_image_center_crop(sar, center_crop=center_crop, size=center_crop_shape)
         sar_rgb = np.zeros((3, *sar_data.shape[1:]))
         sar_rgb[0, ...] = normalize(sar_data[0, ...], clip=False)  # VV
         sar_rgb[1, ...] = normalize(sar_data[1, ...], clip=False)  # VH
         sar_rgb[2, ...] = normalize(sar_data[1, ...] - sar_data[0, ...], clip=False)  # VH - VV
-        data = sar_rgb
         plt.imshow(sar_rgb.transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
 
     if metadata:
@@ -211,19 +206,12 @@ def visualize_one_image(
     overlays = []
 
     # Load cloud data if specified
-    if cloud is not None:
-        if isinstance(cloud, str):
-            with rs.open(cloud) as src:
-                cloud_data = src.read()[cloud_channel, ...]
+    if cld_shdw is not None:
+        if isinstance(cld_shdw, str):
+            cld_shdw_data = load_image_center_crop(cld_shdw, channels=[cloud_channel, shadow_channel], center_crop=center_crop, size=center_crop_shape)
         else:
-            cloud_data = cloud
-        overlays.append((cloud_data, cloud_color))
-
-    # Load shadow data if specified
-    if shadow and shadow_channel is not None:
-        with rs.open(shadow) as src:
-            shadow_data = src.read()
-        overlays.append((shadow_data[shadow_channel, ...], shadow_color))
+            cld_shdw_data = cld_shdw
+        overlays.append((cld_shdw_data, [cloud_color, shadow_color]))
 
     # Load LULC data if specified
     if lulc is not None:
@@ -251,6 +239,13 @@ def visualize_one_image(
             legend_colors = ["#419bdf", "#397d49", "#88b053", "#7a87c6", "#e49635", "#dfc35a", "#c4281b", "#a59b8f", "#b39fe1"]
             legend_handles = [Patch(facecolor=color, label=label) for color, label in zip(legend_colors, legend_labels)]
             plt.legend(handles=legend_handles, bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+        elif isinstance(color, list):
+            for cls, cls_color in enumerate(color):
+                overlay_image = np.zeros((*overlay_data[cls].shape, 4))
+                color_rgba = matplotlib.colors.to_rgba(cls_color)
+                overlay_image[..., :3] = color_rgba[:3]
+                overlay_image[..., 3] = overlay_data[cls] * default_opacity
+                plt.imshow(overlay_image)
 
     if save_dir:
         save_path = os.path.join(save_dir, f'roi{metadata["ROI ID"]}_{metadata["Date"]}_{metadata["Satellite"]}_visualization.png')

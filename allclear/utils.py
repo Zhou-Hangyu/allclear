@@ -5,7 +5,6 @@ import os
 import matplotlib
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
-import torch
 
 
 def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
@@ -162,14 +161,15 @@ def visualize_one_image(
     center cropping to focus on a specific part of the image and saves the visualization if a save directory is provided.
     """
 
-    def normalize(array, max_value, min_percentile=1, max_percentile=99):
+    def normalize(array, clip=True, max_value=None, min_percentile=1, max_percentile=99):
         '''
         normalize: normalize a numpy array so all value are between 0 and 1
         '''
-        array = np.clip(array, 0, max_value)
+        if clip:
+            array = np.clip(array, 0, max_value)
         array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
         normalized_array = (array - array_min) / (array_max - array_min)
-        print(array_min, array_max, normalized_array.min(), normalized_array.max())
+#         print(array_min, array_max, normalized_array.min(), normalized_array.max())
         return np.clip(normalized_array, 0, 1) / 1
 
     plt.figure(figsize=(12, 12), dpi=dpi)
@@ -181,15 +181,15 @@ def visualize_one_image(
         #     msi_data[channel, ...] = normalize(msi_data[channel, ...])
         # # msi_data[msi_channels, ...] = normalize(msi_data[msi_channels, ...])
         # msi_data = np.clip(msi_data, 0, 3000) / 3000
-        data = normalize(msi_data, 3000, min_percentile=1, max_percentile=99)
+        data = normalize(msi_data, max_value=3000, min_percentile=1, max_percentile=99)
         # data = msi_data
         plt.imshow(msi_data[msi_channels, ...].transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
     elif sar is not None:
         sar_data = load_image_center_crop(sar, center_crop, center_crop_shape)
         sar_rgb = np.zeros((3, *sar_data.shape[1:]))
-        sar_rgb[0, ...] = normalize(sar_data[0, ...])  # VV
-        sar_rgb[1, ...] = normalize(sar_data[1, ...])  # VH
-        sar_rgb[2, ...] = normalize(sar_data[1, ...] - sar_data[0, ...])  # VH - VV
+        sar_rgb[0, ...] = normalize(sar_data[0, ...], clip=False)  # VV
+        sar_rgb[1, ...] = normalize(sar_data[1, ...], clip=False)  # VH
+        sar_rgb[2, ...] = normalize(sar_data[1, ...] - sar_data[0, ...], clip=False)  # VH - VV
         data = sar_rgb
         plt.imshow(sar_rgb.transpose(1, 2, 0), interpolation="nearest", vmin=0, vmax=1)
 

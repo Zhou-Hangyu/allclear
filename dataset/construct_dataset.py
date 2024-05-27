@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 import json
 
-def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing'):
+def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
     """
     Constructs a dataset for cloud removal from satellite images. The function pairs
     each clear image with surrounding cloudy images for testing or generates sets
@@ -47,7 +47,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
     def preprocess(sensor_df):
         sensor_df = sensor_df[sensor_df.nan_percentage == 0]
         sensor_df = sensor_df.drop_duplicates(subset=["capture_date", "roi"])
-        sensor_df['capture_date'] = pd.to_datetime(sensor_df['capture_date'])
+        sensor_df['capture_date'] = pd.to_datetime(sensor_df['capture_date'], format="%Y-%m-%d %H:%M:%S")
         sensor_df.sort_values(by='capture_date', inplace=True)
         return sensor_df
 
@@ -59,7 +59,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
     output_dict = {}
     id_counter = 0
 
-    if mode == 'test':
+    if mode == 's2p':
         for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc="Processing ROIs (Testing)"):
             N = len(main_sensor_per_roi_df)
             used_patch_ids = set()
@@ -102,7 +102,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
                     ]
                 output_dict[id_counter] = entry
                 id_counter += 1
-    elif mode == 'train':
+    elif mode == 's2s':
         for roi, roi_df in tqdm(main_sensor_df.groupby('roi'), desc="Processing ROIs (Training)"):
             sets_count = len(roi_df) // tx
             for i in range(sets_count):
@@ -132,7 +132,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='testing')
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Construct AllClear Datasets")
-    parser.add_argument("--mode", type=str, help="Type of dataset", required=True, choices=['test', 'train'])
+    parser.add_argument("--mode", type=str, help="Type of dataset", required=True, choices=['s2p', 's2s'])
     parser.add_argument("--tx", type=int, help="Number of main sensor images in each time series input", default=3)
     parser.add_argument("--main-sensor", type=str, help="Main sensor to use for constructing the dataset", required=True, default='s2_toa')
     parser.add_argument("--main-sensor-metadata", type=str, help="Path to the main sensor metadata file", required=True)
@@ -152,5 +152,7 @@ if __name__ == "__main__":
     dataset = construct_dataset(sensors, main_sensor=args.main_sensor, tx=args.tx, mode=args.mode)
     with open(f'{args.output_dir}/{args.mode}_tx{str(args.tx)}_{args.version}.json', 'w') as f:
         json.dump(dataset, f)
+    intermediate_names = args.main_sensor_metadata.split("_metadata.csv")[0].split("_")
+    dataset_string = f"{intermediate_names[-2]}_{intermediate_names[-1]}"
     print(f"Found {len(dataset)} entries in the dataset")
-    print(f"Dataset saved to {args.output_dir}/{args.mode}_tx{str(args.tx)}_{args.version}.json")
+    print(f"Dataset saved to {args.output_dir}/{args.mode}_tx{str(args.tx)}_{dataset_string}_{args.version}.json")

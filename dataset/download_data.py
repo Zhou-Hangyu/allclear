@@ -293,7 +293,6 @@ def main_download_session(args):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Download datasets from GEE")
     parser.add_argument("--gee-account", type=str, default="account1", help="GEE account name")
-    parser.add_argument("--ee-project-id", type=str, help="Google Earth Engine project id")
     parser.add_argument("--data-type", type=str, help="type of data to download", required=True, choices=COLLECTION_AND_BAND.keys())
     parser.add_argument("--rois", type=str, help="path to the csv file containing the ROIs", required=True)
     parser.add_argument("--radius", type=float, help="radius of the ROI in meter", default=1280)
@@ -315,7 +314,5 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-    # ee.Authenticate()
-    # ee.Initialize(project=args.ee_project_id)
     switch_gee_account(args.gee_account)
     main_download_session(args)

@@ -571,9 +571,9 @@ class DiffCR(BaseModel):
         super().__init__(args)
 
         if "ck696" in os.getcwd():
-            sys.path.append("/share/hariharan/ck696/allclear/baselines/DiffCR3")
+            sys.path.append("/share/hariharan/ck696/allclear/baselines/DiffCR")
         else:
-            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/DiffCR3")
+            sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/DiffCR")
 
         from core.logger import VisualWriter, InfoLogger
         
@@ -609,7 +609,7 @@ class DiffCR(BaseModel):
             writer = None
         )
 
-        params = torch.load("/share/hariharan/ck696/allclear/baselines/DiffCR3/pretrained/diffcr_new.pth")
+        params = torch.load("/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth")
         self.model.netG.load_state_dict(params,strict=False)
         self.model.netG.to(self.device)
         self.model.netG.eval()
@@ -623,7 +623,7 @@ class DiffCR(BaseModel):
             '-c', '--config', 
             type=str, 
             # default='config/ours_double_encoder_splitcaCond_splitcaUnet_ALLCLEAR.json', 
-            default="/share/hariharan/ck696/allclear/baselines/DiffCR3/config/ours_double_encoder_splitcaCond_splitcaUnet_ALLCLEAR.json", 
+            default="/share/hariharan/ck696/allclear/baselines/DiffCR/config/ours_double_encoder_splitcaCond_splitcaUnet_ALLCLEAR.json", 
             help='JSON file for configuration'
         )
         
@@ -686,6 +686,6 @@ class DiffCR(BaseModel):
         x = inputs["input_images"] * 2 - 1
         x = x.reshape(bs, c*t, h, w)
         dummy_y = x[:,:3]
-        output, visuals = self.model.netG.restoration(x, y_0=dummy_y, sample_num=self.model.sample_num)
+        output, visuals = self.model.netG.restoration(x, y_0=dummy_y, sample_num=self.model.sample_num) # default sample_num=8
         output = output.unsqueeze(1) * 0.5 + 0.5
         return {"output": output}

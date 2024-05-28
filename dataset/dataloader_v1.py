@@ -159,6 +159,7 @@ class CRDataset(Dataset):
                  clds_shdws=None,
                  format="stp",
                  target="s2s",
+                 s2_toa_channels=None,
                  max_diff=2):
         if aux_sensors is None:
             aux_sensors = ["s1", "landsat8", "landsat9"]
@@ -180,13 +181,23 @@ class CRDataset(Dataset):
         self.max_diff = max_diff
         if self.format != "stp":
             raise ValueError("The format is not supported.")
-        self.channels = {
-            "s2_toa": list(range(1, 14)),
-            "s1": [1, 2],
-            "landsat8": list(range(1, 12)),
-            "landsat9": list(range(1, 12)),
-            "cld_shdw": [2, 5]
-        }
+        
+        if s2_toa_channels is None:
+            self.channels = {
+                "s2_toa": list(range(1, 14)),
+                "s1": [1, 2],
+                "landsat8": list(range(1, 12)),
+                "landsat9": list(range(1, 12)),
+                "cld_shdw": [2, 5]
+            }
+        else:
+            self.channels = {
+                "s2_toa": s2_toa_channels,
+                "s1": [1, 2],
+                "landsat8": list(range(1, 12)),
+                "landsat9": list(range(1, 12)),
+                "cld_shdw": [2, 5]
+            }
 
     def __len__(self):
         return len(self.dataset.keys())

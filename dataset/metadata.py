@@ -75,15 +75,18 @@ def process_dw_data(df):
     tqdm.pandas(desc="Processing Land Cover Satellite Patches")
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-        pass
-
-        try: # TODO: fix corrupted images during error handling
-            result = nan_percentage(row)
-            results.append(pd.Series(result, name=index))
-        except Exception as e:
-            print(f"Error: {e}. Skipping patch {row['image_file_path']}")
-            df.drop(index, inplace=True)
-            continue
+        dw_map = center_crop(row["image_file_path"], size=(256, 256))
+        unique, counts = np.unique(dw_map, return_counts=True)
+        result = {f"pixel_count_{str(int(i))}": 0 for i in range(9)}
+        result["pixel_count_nan"] = 0
+        for i, count in zip(unique, counts):
+            if np.isnan(i):
+                result["pixel_count_nan"] = count
+            else:
+                result[f"pixel_count_{str(int(i))}"] = count
+        nan_percentage = result["pixel_count_nan"] / (256 * 256) * 100
+        result["nan_percentage"] = nan_percentage
+        results.append(pd.Series(result, name=index))
 
     results_df = pd.concat(results, axis=1).transpose()
     return df.merge(results_df, left_index=True, right_index=True, how="inner")
@@ -113,8 +116,10 @@ def process_chunk(args):
         return process_s2_data(df)
     elif satellite == "dw":
         return process_dw_data(df)
-    else:
+    elif satellite in ["s1", "landsat8", "landsat9"]:
         return process_general_data(df)
+    else:
+        raise ValueError(f"Not supported satellite: {satellite}")
 
 def parallel_process(df, satellite, num_cores):
     print(f"Acquiring all metadata for {satellite} satellite patches...")
@@ -169,7 +174,7 @@ def sanity_checks_tiles(df):
         print(f"Warning: Found {duplicate_entries} duplicate entries in the DataFrame.")
 
 
-def get_init_metadata(df):
+def get_init_metadata(df, save=True):
     """Process and split the DataFrame by satellites and extract metadata for each patch."""
     satellites = df['satellite'].unique()
     results = {}
@@ -180,10 +185,13 @@ def get_init_metadata(df):
         for index, row in tqdm(satellite_df.iterrows(), total=satellite_df.shape[0],
                                desc=f'Processing patches for satellite {satellite}'):
             try:
-                metadata_df = pd.read_csv(row['metadata_file_path'])
-                metadata_dict = metadata_df.to_dict(orient='records')[0] if not metadata_df.empty else {}
-                data = row.to_dict()
-                data.update(metadata_dict)
+                if satellite in METADATA_GROUP:
+                    metadata_df = pd.read_csv(row['metadata_file_path'])
+                    metadata_dict = metadata_df.to_dict(orient='records')[0] if not metadata_df.empty else {}
+                    data = row.to_dict()
+                    data.update(metadata_dict)
+                else:
+                    data = row.to_dict()
                 metadata.append(data)
             except Exception as e:
                 print(f"Error: {e}. Skipping patch {row['image_file_path']}")
@@ -193,49 +201,55 @@ def get_init_metadata(df):
         metadata_columns = [col for col in processed_df.columns if col not in primary_columns]
         final_columns = primary_columns + sorted(metadata_columns)
         results[satellite] = processed_df[final_columns]
-        # make capture_date datetime object, and add patch uid
-        results[satellite]['capture_date'] = pd.to_datetime(results[satellite]['capture_date'], format="%Y-%m-%d %H:%M:%S")
-        results[satellite]['uid'] = (results[satellite]['roi'] + '_' +
-                                     results[satellite]['capture_date'].dt.strftime('%Y%m%d%H%M') + '_' +
-                                     results[satellite]['satellite'])
-        cols = results[satellite].columns.tolist()
-        cols.insert(0, cols.pop(cols.index('uid')))
-        results[satellite] = results[satellite][cols]
+        if satellite in METADATA_GROUP:
+            # make capture_date datetime object, and add patch uid
+            results[satellite]['capture_date'] = pd.to_datetime(results[satellite]['capture_date'], format="%Y-%m-%d %H:%M:%S")
+            results[satellite]['uid'] = (results[satellite]['roi'] + '_' +
+                                         results[satellite]['capture_date'].dt.strftime('%Y%m%d%H%M') + '_' +
+                                         results[satellite]['satellite'])
+            cols = results[satellite].columns.tolist()
+            cols.insert(0, cols.pop(cols.index('uid')))
+            results[satellite] = results[satellite][cols]
+        if save:
+            results[satellite].to_csv(f"/share/hariharan/cloud_removal/metadata/v3/{satellite}_{SELECTED_ROIS_FNAME.split('.')[0]}_init_metadata.csv", index=False)
     return results
 
 if __name__ == "__main__":
     # Command: python -m dataset.metadata
-    VERBOSE = True
+    VERBOSE = False
     # DATA_PATH = "/share/hariharan/cloud_removal/MultiSensor/dataset_30k_v4"
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
     ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_train_20Ksamples.csv")
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_test_4Ksamples.csv")
-    ROIS = [f"roi{roi_id}" for roi_id in ROIS_METADATA['index'].tolist()]
-    # SELECTED_ROIS_FNAME = "test_4k_full.txt"
-    SELECTED_ROIS_FNAME = "train_2k.txt"
+    # SELECTED_ROIS_FNAME = "test_4k.txt"
+    # SELECTED_ROIS_FNAME = "train_2k.txt"
     # SELECTED_ROIS_FNAME = "dataset_500.txt"
     # SELECTED_ROIS_FNAME = "train_9k.txt"
+    SELECTED_ROIS_FNAME = "train_20k.txt"
     # SELECTED_ROIS = ROIS
-    with open(f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
-        SELECTED_ROIS = f.read().splitlines()
+    # with open(f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
+    #     SELECTED_ROIS = f.read().splitlines()
+    SELECTED_ROIS = [f'roi{str(rid)}' for rid in ROIS_METADATA['index'].values]
     DATE_RANGE = [f'2022_{i}' for i in range(1, 13)]
-    # SATS = ['s1', 's2_toa', 'cld_shdw', 'dw', 'landsat8', 'landsat9']
+    METADATA_GROUP = ['s1', 's2_toa', 'landsat8', 'landsat9']
+    # SATS = ['s1', 's2_toa', 'dw', 'landsat8', 'landsat9']
     # SATS = ['s2_toa']
     # SATS = ['s2_toa', 's1', 'cld_shdw', 'dw']
     SATS = ['s2_toa', 's1']
+    # SATS = ["dw"]
     # SATS = ['cld_shdw']
-    WORKERS=32
+
+    # WORKERS = 16
+    # WORKERS=32
+    WORKERS = 64
     # WORKERS=96
 
     # Find all tiles
     metadata = find_all_tiles(DATA_PATH, SELECTED_ROIS, DATE_RANGE, SATS, ROIS_METADATA)
     sanity_checks_tiles(metadata)
-    # metadata.to_csv(
-    #     f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME.split('.')[0]}_alltiles_metadata.csv",
-    #     index=False)
 
     # Split up satellites and populate the original metadata
-    metadata_dict = get_init_metadata(metadata)
+    metadata_dict = get_init_metadata(metadata, save=True)
 
     # Parallel I/O to get more metadata
     for satellite in metadata_dict:

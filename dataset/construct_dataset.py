@@ -53,6 +53,9 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
 
     main_sensor_df = sensors[main_sensor].copy()
     main_sensor_df = preprocess(main_sensor_df)
+    if main_sensor == 's2_toa':
+        # filter out images without cloud and shadow information
+        main_sensor_df = main_sensor_df[main_sensor_df['cloud_percentage_30'] != -1]
     main_sensor_df['total_cloud_shadow'] = main_sensor_df['cloud_percentage_30'] + main_sensor_df['shadow_percentage_30']
     main_sensor_df['clear_image_flag'] = main_sensor_df['total_cloud_shadow'] < 10
 
@@ -60,7 +63,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
     id_counter = 0
 
     if mode == 's2p':
-        for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc="Processing ROIs (Testing)"):
+        for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc=f"Processing ROIs ({mode})"):
             N = len(main_sensor_per_roi_df)
             used_patch_ids = set()
             for df_idx in range(N - tx):
@@ -103,7 +106,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                 output_dict[id_counter] = entry
                 id_counter += 1
     elif mode == 's2s':
-        for roi, roi_df in tqdm(main_sensor_df.groupby('roi'), desc="Processing ROIs (Training)"):
+        for roi, roi_df in tqdm(main_sensor_df.groupby('roi'), desc=f"Processing ROIs ({mode})"):
             sets_count = len(roi_df) // tx
             for i in range(sets_count):
                 set_main_sensor_df = roi_df.iloc[i * tx:(i + 1) * tx]

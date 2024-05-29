@@ -116,6 +116,7 @@ class CRDataset(Dataset):
             self.dataset = dataset
         else:
             self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
+            self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())} # reindex the dataset
         self.main_sensor = main_sensor
         self.aux_sensors = aux_sensors
         self.sensors = [main_sensor] + aux_sensors
@@ -136,7 +137,8 @@ class CRDataset(Dataset):
                 "s1": [1, 2],
                 "landsat8": list(range(1, 12)),
                 "landsat9": list(range(1, 12)),
-                "cld_shdw": [2, 5]
+                "cld_shdw": [2, 5],
+                "dw": [1],
             }
         else:
             self.channels = {
@@ -144,7 +146,8 @@ class CRDataset(Dataset):
                 "s1": [1, 2],
                 "landsat8": list(range(1, 12)),
                 "landsat9": list(range(1, 12)),
-                "cld_shdw": [2, 5]
+                "cld_shdw": [2, 5],
+                "dw": [1],
             }
 
     def __len__(self):
@@ -203,9 +206,9 @@ class CRDataset(Dataset):
                 image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
                 image = torch.nan_to_num(image, nan=-1)
             elif sensor_name == "cld_shdw":
-                mask = torch.isnan(image[0]) | (image[0] < 0.0001)
-                image[0][mask] = 1
-                image[1][mask] = 0
+                # mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                # image[0][mask] = 1
+                # image[1][mask] = 0
                 image = torch.nan_to_num(image, nan=1)
                 pass
             elif sensor_name in ["dw"]:
@@ -247,9 +250,10 @@ class CRDataset(Dataset):
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
                         dw_fpath = fpath.replace("s2_toa", "dw")
-                        dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                        dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
-                        inputs["input_dw"].append((timestamp, dw))
+                        if os.path.exists(dw_fpath):
+                            dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
+                            dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
+                            inputs["input_dw"].append((timestamp, dw))
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
         timestamps = sorted(set(timestamps))
         timestamps_main_sensor = [timestamp for timestamp, _ in inputs[self.main_sensor]]
@@ -290,9 +294,12 @@ class CRDataset(Dataset):
                 inputs["target_cld_shdw"] = None
             if "dw" in self.aux_data:
                 dw_fpath = fpath.replace("s2_toa", "dw")
-                dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
-                inputs["target_dw"] = dw.unsqueeze(0)
+                if os.path.exists(dw_fpath):
+                    dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
+                    dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
+                    inputs["target_dw"] = dw.unsqueeze(0)
+                else:
+                    raise ValueError(f"Dw file not found: {dw_fpath}") # TODO: fix this
             else:
                 inputs["target_dw"] = None
 
@@ -370,7 +377,7 @@ class CRDataset(Dataset):
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
-
+            print(inputs["target_dw"].permute(1, 0, 2, 3).shape, inputs_dw.permute(1, 0, 2, 3).shape)
             item_dict = {
                 "input_images": sample_stp,  # Shape: (C, T, H, W)
                 "target": target_image,  # Shape: (C, T, H, W)
@@ -378,7 +385,7 @@ class CRDataset(Dataset):
                 # Shape: (2, T, H, W)
                 "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
                                                                                         "target_cld_shdw"] is not None else None,
-                # Shape: (2, T, H, W)
+                # Shape: (1, T, H, W)
                 "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
                 # Shape: (C, T, H, W)

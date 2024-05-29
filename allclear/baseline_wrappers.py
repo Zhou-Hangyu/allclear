@@ -120,7 +120,7 @@ class UnCRtainTS(BaseModel):
     def preprocess(self, inputs):
         inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
         inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
-
+        inputs["input_cld_shdw"] = inputs["input_cld_shdw"].to(self.device)
         # if self.args.uc_s1 == 0: 
         #     pass
         # else:
@@ -128,13 +128,10 @@ class UnCRtainTS(BaseModel):
         #     buffer = torch.zeros((inputs["input_images"].shape[0], inputs["input_images"].shape[1], 2, inputs["input_images"].shape[3], inputs["input_images"].shape[4])).to(self.device)
         #     inputs["input_images"] = torch.cat((inputs["input_images"], buffer), dim=2)
         #     inputs["target"] = torch.cat((inputs["target"], buffer[:, 0:1]), dim=2)
+        inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)
+        inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4).squeeze(1)
+        inputs["input_cld_shdw"] = inputs["input_cld_shdw"].permute(0, 2, 1, 3, 4)[:,:,0,...]
 
-        if self.args.eval_mode == "sr":
-            inputs["input_images"] = s2_boa2toa(inputs["input_images"])
-            inputs["target"] = s2_boa2toa(inputs["target"])
-
-        inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
-        inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
         return inputs
 
     def forward(self, inputs):
@@ -147,7 +144,7 @@ class UnCRtainTS(BaseModel):
         """
         input_imgs = inputs["input_images"]
         target_imgs = inputs["target"]
-        masks = inputs["input_cloud_masks"]
+        masks = inputs["input_cld_shdw"]
         capture_dates = inputs["timestamps"]
         # Dates handling (see `dataLoader.py` and `train_reconstruct.py`)
         # s2_td = [(d - self.S1_LAUNCH).days for d in capture_dates]
@@ -156,13 +153,21 @@ class UnCRtainTS(BaseModel):
 
         if self.args.uc_s1 == 0:
             pass
-        else:
-            buffer = torch.zeros((inputs["input_images"].shape[0], inputs["input_images"].shape[1], 2, inputs["input_images"].shape[3], inputs["input_images"].shape[4])).to(self.device)
-            input_imgs = torch.cat((input_imgs, buffer), dim=2)
-            target_imgs = torch.cat((target_imgs, buffer[:, 0:1]), dim=2)
+        elif self.args.uc_s1 == 1:
+            if "s1" not in self.args.aux_sensors:
+                raise ValueError("S1 is not in the list of auxiliary sensors")
+            # buffer = torch.zeros((inputs["input_images"].shape[0], inputs["input_images"].shape[1], 2, inputs["input_images"].shape[3], inputs["input_images"].shape[4])).to(self.device)
+            # input_imgs = torch.cat((input_imgs, buffer), dim=2)
+            # target_imgs = torch.cat((target_imgs, buffer[:, 0:1]), dim=2)
+            buffer = torch.zeros((inputs["input_images"].shape[0],
+                                  2,
+                                  inputs["input_images"].shape[3],
+                                  inputs["input_images"].shape[4])).to(self.device)
+            target_imgs = torch.cat((target_imgs, buffer), dim=1)
 
         model_inputs = {"A": input_imgs, "B": target_imgs, "dates": dates, "masks": masks}
-        
+        print(input_imgs.shape, target_imgs.shape, masks.shape, dates.shape)
+
         with torch.no_grad():
             self.model.set_input(model_inputs)
             self.model.forward()
@@ -176,8 +181,6 @@ class UnCRtainTS(BaseModel):
                 var = out[:, :, self.S2_BANDS :, ...]
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
-        # return out, var
-        print(out.shape)
         return {"output": out, "variance": var}
 
 

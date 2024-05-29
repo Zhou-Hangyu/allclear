@@ -12,16 +12,10 @@ BATCH_SIZE=4
 NUM_WORKERS=4
 DEVICE="cuda:0"
 #MODEL_CHECKPOINT="/home/hz477/declousion/baselines/UnCRtainTS/results/checkpoints/diagonal_1/model.pth.tar"
-#SELECTED_ROIS='0'
-#SELECTED_ROIS='0 1 14 29'
-#SELECTED_ROIS='0 1 14 29 31 34 35 37 38'
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
-#SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52 56 65 71 80 83' # 18 test rois from both sen12ms-cr-ts and sen12ms-cr
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init"
-#EVAL_MODE='sr'
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0524_reproduce"
 EVAL_MODE='toa'
 
-#export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 python $SCRIPT_PATH \
   --data-path $DATA_PATH \
   --metadata-path $METADATA_PATH \

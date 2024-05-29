@@ -16,8 +16,8 @@ EVAL_MODE="sr"
 SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
 SELECTED_ROIS='0 1 14 21 29 31 34'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/trained_on_SEN12MSCRTS_EP5_1"
-SELECTED_ROIS='35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/trained_on_SEN12MSCRTS_EP5_2"
+# SELECTED_ROIS='35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/simpleunet/trained_on_SEN12MSCRTS_EP5_2"
 
 # v50
 SU_MODEL_BLOCKS="CCRRA"

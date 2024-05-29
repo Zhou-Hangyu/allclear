@@ -609,12 +609,16 @@ class DiffCR(BaseModel):
             writer = None
         )
 
-        params = torch.load("/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth")
+        # Pretrained model
+        # params = torch.load("/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth")
+        # Our model trained on new 2K roi dataset
+        print(f"Using DiffCR model checkpoint: {args.diff_checkpoint}")
+        params = torch.load(args.diff_checkpoint)
+
         self.model.netG.load_state_dict(params,strict=False)
         self.model.netG.to(self.device)
         self.model.netG.eval()
-
-        self.bands = (3,2,1)  # {'MAE': 0.2467460036277771, 'RMSE': 0.2747446596622467, 'PSNR': 11.68069839477539, 'SAM': 14.844504356384277, 'SSIM': 0.11971022933721542}
+        self.bands = (3,2,1)
 
     def get_options(self):
         parser = argparse.ArgumentParser()
@@ -684,6 +688,7 @@ class DiffCR(BaseModel):
         bs, c, t, h, w = inputs["input_images"].shape
         # Model I/O (bs, c * t, h, w)
         x = inputs["input_images"] * 2 - 1
+        # x = x.permute(0, 2, 1, 3, 4)
         x = x.reshape(bs, c*t, h, w)
         dummy_y = x[:,:3]
         output, visuals = self.model.netG.restoration(x, y_0=dummy_y, sample_num=self.model.sample_num) # default sample_num=8

@@ -19,6 +19,10 @@ SELECTED_ROIS='0 1' # bands = (3,2,1) + permute # {'MAE': 0.30321353673934937, '
 SELECTED_ROIS='0 1' # bands = (3,2,1) + # smp=4 # {'MAE': 0.08607839047908783, 'RMSE': 0.09090930968523026, 'PSNR': 22.086383819580078, 'SAM': 8.314508438110352, 'SSIM': 0.7475206255912781}
 SELECTED_ROIS='0 1' # bands = (3,2,1) + # smp=32 # {'MAE': 0.08608336001634598, 'RMSE': 0.0909145250916481, 'PSNR': 22.084970474243164, 'SAM': 8.314834594726562, 'SSIM': 0.7474978566169739}
 
+CHECKPOINT="/share/hariharan/ck696/allclear_0529_lllll/baselines/DiffCR3/experiments/train_ours_double_encoder_splitcaCond_splitcaUnet_sigmoid_240527_110904/checkpoint/60.state"
+SELECTED_ROIS='0 1' # {'MAE': 0.3680223524570465, 'RMSE': 0.3996581733226776, 'PSNR': 8.11113452911377, 'SAM': 12.01708984375, 'SSIM': 0.10019845515489578}
+SELECTED_ROIS='0'   # + permute # {'MAE': 0.2828892171382904, 'RMSE': 0.3409844934940338, 'PSNR': 9.407931327819824, 'SAM': 9.026503562927246, 'SSIM': 0.1220887154340744}
+
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/DiffCR/outputs"
 
 
@@ -33,4 +37,5 @@ python $SCRIPT_PATH \
   --selected-rois $SELECTED_ROIS \
   --experiment-output-path $EXP_OUTPUT_PATH \
   --save-plots \
-  --eval-mode $EVAL_MODE
+  --eval-mode $EVAL_MODE \
+  --diff-checkpoint $CHECKPOINT

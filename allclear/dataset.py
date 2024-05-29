@@ -8,19 +8,6 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 
 
-def sample_cld_shdw(clds_shdws):
-    """Randomly sample clouds from existing cloud masks in the dataset.
-    clds_shdws shape: (N, 2, H, W), where N is the number of cloud masks, and cloud in channel 1, shadow in channel 2."""
-    idx = torch.randint(0, len(clds_shdws), (1,)).item()
-    cld_shdw = clds_shdws[idx]
-    if torch.rand(1).item() > 0.5:
-        cld_shdw = torch.flip(cld_shdw, dims=[1])
-    if torch.rand(1).item() > 0.5:
-        cld_shdw = torch.flip(cld_shdw, dims=[2])
-    if torch.rand(1).item() > 0.5:
-        cld_shdw = torch.rot90(cld_shdw, k=1, dims=[1, 2])
-    return cld_shdw
-
 
 def square_cld_shdw_maxpool(image_size=256):
     """Generate square cloud & shadow masks."""
@@ -96,6 +83,15 @@ class CRDataset(Dataset):
             load_and_center_crop(fpath, channels=None, size=(256, 256)): Loads and center crops an image from the given file path.
             preprocess(image, sensor_name): Preprocesses the image according to the sensor type.
             __getitem__(idx): Retrieves the sample at the given index.
+
+        Example:
+        data = {
+            1: {"roi": "roi1234", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
+            2: {"roi": "roi5678", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
+            3: {"roi": "roi9101", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
+        }
+        dataset = CRDataset('dataset.json', ['roi1', 'roi2'], 3)
+        dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
     def __init__(self,
@@ -106,13 +102,14 @@ class CRDataset(Dataset):
                  aux_data=None,
                  tx=3,
                  center_crop_size=(256, 256),
-                 clds_shdws=None,
                  format="stp",
                  target_mode="s2s",
                  s2_toa_channels=None,
-                 max_diff=2):
+                 max_diff=2,
+                 cld_shdw_fpaths=None,
+                 do_preprocess=True,):
         if aux_sensors is None:
-            aux_sensors = ["s1", "landsat8", "landsat9"]
+            aux_sensors = []
         if aux_data is None:
             aux_data = ['cld_shdw', 'dw']
         if selected_rois == "all":
@@ -125,10 +122,11 @@ class CRDataset(Dataset):
         self.aux_data = aux_data
         self.tx = tx
         self.center_crop_size = center_crop_size
-        self.clds_shdws = clds_shdws
+        self.cld_shdw_fpaths = cld_shdw_fpaths
         self.format = format
         self.target_mode = target_mode
         self.max_diff = max_diff
+        self.do_preprocess = do_preprocess
         if self.format != "stp":
             raise ValueError("The format is not supported.")
 
@@ -150,7 +148,29 @@ class CRDataset(Dataset):
             }
 
     def __len__(self):
-        return len(self.data)
+        return len(self.dataset)
+
+    def sample_cld_shdw(self):
+        """Randomly sample clouds from existing cloud masks in the dataset.
+        cld_shdw_fpaths: list of file path to all cloud and shadow masks in the dataset,
+        where cloud in channel 1, shadow in channel 2."""
+        while True: # Retry until a valid cloud shadow mask is loaded
+            try:
+                idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
+                cld_shdw_fpath = self.cld_shdw_fpaths[idx]
+                cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
+                cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
+                break
+            except Exception as e:
+                print(e)
+                continue
+        if torch.rand(1).item() > 0.5:
+            cld_shdw = torch.flip(cld_shdw, dims=[1])
+        if torch.rand(1).item() > 0.5:
+            cld_shdw = torch.flip(cld_shdw, dims=[2])
+        if torch.rand(1).item() > 0.5:
+            cld_shdw = torch.rot90(cld_shdw, k=1, dims=[1, 2])
+        return cld_shdw
 
     @staticmethod
     def load_and_center_crop(fpath, channels=None, size=(256, 256)):
@@ -169,27 +189,31 @@ class CRDataset(Dataset):
         return data
 
     @staticmethod
-    def preprocess(image, sensor_name):
-        if sensor_name == "s2_toa":
-            image = torch.clip(image, 0, 10000) / 10000
-            image = torch.nan_to_num(image, nan=0)
-        elif sensor_name == "s1":
-            image[image < -40] = -40
-            image[0] = torch.clip(image[0] + 25, 0, 25) / 25
-            image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
-            image = torch.nan_to_num(image, nan=-1)
-        elif sensor_name == "cld_shdw":
-            # mask = torch.isnan(image[0]) | (image[0] < 0.0001)
-            # image[0][mask] = 1
-            # image[1][mask] = 0
-            # image = torch.nan_to_num(image, nan=1)
-            pass
-        elif sensor_name in ["dw"]:
-            image = image
-        else:  # TODO: Implement preprocessing for other sensors
-            print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
-            image = image
-        return image
+    def preprocess(image, sensor_name, do_preprocess=True):
+        """Set do_preprocess to False to skip preprocessing for benchmarking purposes."""
+        if not do_preprocess:
+            return image
+        else:
+            if sensor_name == "s2_toa":
+                image = torch.clip(image, 0, 10000) / 10000
+                image = torch.nan_to_num(image, nan=0)
+            elif sensor_name == "s1":
+                image[image < -40] = -40
+                image[0] = torch.clip(image[0] + 25, 0, 25) / 25
+                image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
+                image = torch.nan_to_num(image, nan=-1)
+            elif sensor_name == "cld_shdw":
+                mask = torch.isnan(image[0]) | (image[0] < 0.0001)
+                image[0][mask] = 1
+                image[1][mask] = 0
+                image = torch.nan_to_num(image, nan=1)
+                pass
+            elif sensor_name in ["dw"]:
+                image = image
+            else:  # TODO: Implement preprocessing for other sensors
+                print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
+                image = image
+            return image
 
     def __getitem__(self, idx):
         # with Profile() as prof:
@@ -208,7 +232,7 @@ class CRDataset(Dataset):
                 timestamp, fpath = sensor_input
                 timestamp = datetime.strptime(timestamp, "%Y-%m-%d")
                 image = self.load_and_center_crop(fpath, self.channels[sensor], self.center_crop_size)
-                image = self.preprocess(image, sensor)
+                image = self.preprocess(image, sensor, do_preprocess=self.do_preprocess)
                 inputs[sensor].append((timestamp, image))
                 if sensor == self.main_sensor:
                     timestamps.append(timestamp)
@@ -217,14 +241,14 @@ class CRDataset(Dataset):
                         if os.path.exists(cld_shdw_fpath):
                             cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"],
                                                                  self.center_crop_size)
-                            cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
+                            cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
                         else:
                             raise ValueError(f"Cloud shadow file not found: {cld_shdw_fpath}")
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
                     if "dw" in self.aux_data:
                         dw_fpath = fpath.replace("s2_toa", "dw")
                         dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                        dw = self.preprocess(dw, "dw")
+                        dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                         inputs["input_dw"].append((timestamp, dw))
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
         timestamps = sorted(set(timestamps))
@@ -232,14 +256,6 @@ class CRDataset(Dataset):
         start_date, end_date = timestamps[0], timestamps[-1]
         time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in
                             timestamps]
-
-        # Retrieve the target and inputs for the given index from the dataset CSV.
-        entry = self.data.iloc[idx]
-        target_id = entry["Target"]
-        input_ids = entry[[col for col in self.data.columns if "Input" in col]].dropna().tolist()
-
-        target_metadata = self.metadata[self.metadata["uid"] == target_id].iloc[0]
-        input_metadatas = [self.metadata[self.metadata["uid"] == input_id].iloc[0] for input_id in input_ids]
 
         # organize the data into desired format
         if self.format == "stp":  # TODO: refactor this code once more format is added.
@@ -259,14 +275,14 @@ class CRDataset(Dataset):
                 raise ValueError("Target is not available in the sample.")
             timestamp, fpath = sample["target"][0]
             image = self.load_and_center_crop(fpath, self.channels[self.main_sensor], self.center_crop_size)
-            image = self.preprocess(image, self.main_sensor)  # target by default is the main sensor
+            image = self.preprocess(image, self.main_sensor, do_preprocess=self.do_preprocess)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
                 cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
                 if os.path.exists(cld_shdw_fpath):
                     cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"],
                                                          self.center_crop_size)
-                    cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
+                    cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
                 else:
                     raise ValueError(f"Cloud shadow file not found: {cld_shdw_fpath}")
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
@@ -275,19 +291,19 @@ class CRDataset(Dataset):
             if "dw" in self.aux_data:
                 dw_fpath = fpath.replace("s2_toa", "dw")
                 dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                dw = self.preprocess(dw, "dw")
+                dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                 inputs["target_dw"] = dw.unsqueeze(0)
             else:
                 inputs["target_dw"] = None
 
         elif self.target_mode == "s2s":
-            if self.clds_shdws is None:
+            if self.cld_shdw_fpaths is None:
                 raise ValueError("Cloud and shadow masks are not available.")
             synthetic_inputs_main_sensor = copy.deepcopy(inputs_main_sensor)
             synthetic_clds_shdws = torch.zeros_like(inputs_cld_shdw, dtype=torch.float16)
             for i in range(inputs_cld_shdw.shape[0]):
-                # sampled_cld_shdw = erode_dilate_cld_shdw(sample_cld_shdw(self.clds_shdws)) * random_opacity()
-                sampled_cld_shdw = sample_cld_shdw(self.clds_shdws) * random_opacity()
+                # sampled_cld_shdw = erode_dilate_cld_shdw(self.sample_cld_shdw()) * random_opacity()
+                sampled_cld_shdw = self.sample_cld_shdw() * random_opacity()
                 squared_cld_shdw = square_cld_shdw() * random_opacity()
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
                 synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld

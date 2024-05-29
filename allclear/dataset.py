@@ -1,11 +1,11 @@
 import os
 import copy
-from datetime import datetime, timedelta
-import pandas as pd
+from datetime import datetime
 import numpy as np
 import rasterio as rs
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
+import torch.nn.functional as F
 
 
 def sample_cld_shdw(clds_shdws):
@@ -108,7 +108,7 @@ class CRDataset(Dataset):
                  center_crop_size=(256, 256),
                  clds_shdws=None,
                  format="stp",
-                 target="s2s",
+                 target_mode="s2s",
                  s2_toa_channels=None,
                  max_diff=2):
         if aux_sensors is None:
@@ -127,7 +127,7 @@ class CRDataset(Dataset):
         self.center_crop_size = center_crop_size
         self.clds_shdws = clds_shdws
         self.format = format
-        self.target = target
+        self.target_mode = target_mode
         self.max_diff = max_diff
         if self.format != "stp":
             raise ValueError("The format is not supported.")
@@ -254,7 +254,7 @@ class CRDataset(Dataset):
                 inputs_dw = None
 
         # load in targets. If seq2seq (s2s), target use syncld; if seq2point (s2p), target use predefined target clear image.
-        if self.target == "s2p":
+        if self.target_mode == "s2p":
             if "target" not in sample.keys():
                 raise ValueError("Target is not available in the sample.")
             timestamp, fpath = sample["target"][0]
@@ -280,7 +280,7 @@ class CRDataset(Dataset):
             else:
                 inputs["target_dw"] = None
 
-        elif self.target == "s2s":
+        elif self.target_mode == "s2s":
             if self.clds_shdws is None:
                 raise ValueError("Cloud and shadow masks are not available.")
             synthetic_inputs_main_sensor = copy.deepcopy(inputs_main_sensor)
@@ -347,10 +347,10 @@ class CRDataset(Dataset):
                         channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
 
             sample_stp = sample_stp.permute(1, 0, 2, 3)
-            if self.target == "s2p":
+            if self.target_mode == "s2p":
                 target_image = inputs["target"][0][1]
                 target_image = target_image.unsqueeze(1)
-            elif self.target == "s2s":
+            elif self.target_mode == "s2s":
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())

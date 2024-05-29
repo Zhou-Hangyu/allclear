@@ -4,7 +4,8 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
-import sys, os
+import sys, os, json
+
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
     sys.path.append("/share/hariharan/ck696/allclear/baselines")
@@ -29,12 +30,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 class Metrics:
-    def __init__(self, outputs, targets, masks, lulc=None, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
+    """
+    outputs and targets shape: (B, T, C, H, W)
+    """
+    def __init__(self, outputs, targets, masks, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
         self.device = torch.device(device)
         self.outputs = outputs.view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
         self.targets = targets.view(-1, *targets.shape[2:])
         self.masks = masks.view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
-        self.lulc = lulc if lulc is not None else None
         if lulc_maps is not None:
             self.lulc_maps = lulc_maps.view(-1, *lulc_maps.shape[2:])
             self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
@@ -53,7 +56,7 @@ class Metrics:
         }
 
     def evaluate_strat_lulc(self, mode="map"):
-        """mode can be 'map' or 'label'"""
+        """mode can be 'map'. 'label' mode is deprecated."""
         lulc_metrics = {}
         num_classes = 9
         for c in range(num_classes):
@@ -66,15 +69,6 @@ class Metrics:
                     "PSNR": metrics[2].nanmean().item(),
                     "SAM": metrics[3].nanmean().item(),
                     "SSIM": metrics[4].nanmean().item(),
-                }
-            elif mode == "label":
-                lulc_c = self.lulc == c
-                lulc_metrics[c] = {
-                    "MAE": self.maes[lulc_c].nanmean().item(),
-                    "RMSE": self.rmses[lulc_c].nanmean().item(),
-                    "PSNR": self.psnrs[lulc_c].nanmean().item(),
-                    "SAM": self.sams[lulc_c].nanmean().item(),
-                    "SSIM": self.ssims[lulc_c].nanmean().item(),
                 }
             else:
                 raise ValueError(f"Invalid mode: {mode}")
@@ -249,25 +243,37 @@ class BenchmarkEngine:
         return model
 
     def setup_data_loader(self):
+        with open(self.args.dataset_fpath, "r") as f:
+            dataset = json.load(f)
+        with open(self.args.cld_shdw_fpaths, "r") as f:
+            cld_shdw_fpaths = json.load(f)
+        selected_rois = self.args.selected_rois if self.args.selected_rois is not None else "all"
         dataset = CRDataset(
-            self.args.data_path, self.args.metadata_path, self.args.selected_rois, self.args.time_span, self.args.eval_mode, self.args.cloud_percentage_range
+            dataset=dataset,
+            selected_rois=selected_rois,
+            main_sensor=self.args.main_sensor,
+            aux_sensors=self.args.aux_sensors,
+            aux_data=self.args.aux_data,
+            tx=self.args.tx,
+            target_mode=self.args.target_mode,
+            cld_shdw_fpaths=cld_shdw_fpaths,
+            do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
         )
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
 
     def run(self):
         outputs_all = []
         targets_all = []
-        target_masks_all = []
-        target_lulc_labels = []
+        target_non_cld_shdw_masks_all = []
         target_lulc_maps = []
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
             with torch.no_grad():
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
-                target_mask = 1 - data["target_cloud_mask"].cpu() # negate to get non-cloud mask
-                target_masks_all.append(target_mask)
-                target_lulc_labels.append(data["target_lulc_label"].cpu())
-                target_lulc_maps.append(data["target_lulc_map"].cpu())
+                target_cld_shdw_mask = (data["target_cld_shdw"][0] + data["target_cld_shdw"][1]) > 0
+                target_non_cld_shdw_mask = torch.logical_not(target_cld_shdw_mask).cpu()
+                target_non_cld_shdw_masks_all.append(target_non_cld_shdw_mask)
+                target_lulc_maps.append(data["target_dw"].cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
                 # save results
@@ -284,23 +290,18 @@ class BenchmarkEngine:
 
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
-        masks = torch.cat(target_masks_all, dim=0)
-        lulc_labels = torch.cat(target_lulc_labels, dim=0)
+        masks = torch.cat(target_non_cld_shdw_masks_all, dim=0)
         lulc_maps = torch.cat(target_lulc_maps, dim=0)
 
-        metrics = Metrics(outputs, targets, masks, lulc=lulc_labels, lulc_maps=lulc_maps)
+        metrics = Metrics(outputs, targets, masks, lulc_maps=lulc_maps)
         results = metrics.evaluate_aggregate()
         print(results)
 
-        strat_lulc_label = metrics.evaluate_strat_lulc(mode="label")
         strat_lulc = metrics.evaluate_strat_lulc(mode="map")
-        plot_lulc_metrics(strat_lulc_label, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_label")
         plot_lulc_metrics(strat_lulc, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
 
-        # Remove B10 from the outputs and targets for evaluation
-        # targets = targets[:, :, self.args.eval_bands, :, :]
         self.cleanup()
-        return outputs, targets, masks, lulc_labels, lulc_maps
+        return outputs, targets, masks, lulc_maps
 
     def cleanup(self):
         pass
@@ -312,21 +313,24 @@ class BenchmarkEngine:
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Benchmarking Engine for Models and Datasets")
     parser.add_argument("--baseline-base-path", type=str, required=True, help="Path to the baseline codebase")
-    parser.add_argument("--data-path", type=str, required=True, help="Path to dataset")
-    parser.add_argument("--metadata-path", type=str, required=True, help="Path to metadata file")
+    parser.add_argument("--dataset-fpath", type=str, default="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json" ,required=True, help="Path to dataset metadata file")
     parser.add_argument("--model-name", type=str, required=True, help="Model to use for benchmarking")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for data loading")
     parser.add_argument("--num-workers", type=int, default=4, help="Number of workers for DataLoader")
     parser.add_argument("--data-split", type=str, default="train", help="Data split to use [train, val, test]")
     parser.add_argument("--device", type=str, required=True, help="Device to run the model on")
+    parser.add_argument("--main-sensor", type=str, default="s2_toa", help="Main sensor for the dataset")
+    parser.add_argument("--aux-sensors", type=str, nargs="+", help="Auxiliary sensors for the dataset")
+    parser.add_argument("--aux-data", type=str, nargs="+",default=["cld_shdw", "dw"], help="Auxiliary data for the dataset")
+    parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
+    parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
+    parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
     parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
-    parser.add_argument("--selected-rois", type=int, nargs="+", required=True, help="Selected ROIs for benchmarking")
-    parser.add_argument("--time-span", type=int, default=3, help="Time span for the dataset")
-    parser.add_argument("--cloud-percentage-range", type=int, nargs=2, default=[20, 30], help="Cloud percentage range for the dataset")
+    parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
+    parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
     parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines", help="Path to save the experiment results")
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
-    parser.add_argument("--eval-mode", type=str, default="toa", choices=["toa", "sr"], help="Evaluation mode for the dataset")
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
 
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")

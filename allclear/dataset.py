@@ -254,12 +254,15 @@ class CRDataset(Dataset):
                             dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
                             dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                             inputs["input_dw"].append((timestamp, dw))
+                        else:
+                            inputs["input_dw"].append((timestamp, torch.ones(len(self.channels['dw']), *self.center_crop_size)))  # placeholder
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
         timestamps = sorted(set(timestamps))
         timestamps_main_sensor = [timestamp for timestamp, _ in inputs[self.main_sensor]]
         start_date, end_date = timestamps[0], timestamps[-1]
         time_differences = [round((timestamp - start_date).total_seconds() / (24 * 3600)) for timestamp in
                             timestamps]
+        timestamps = [timestamp.timestamp() for timestamp in timestamps]
 
         # organize the data into desired format
         if self.format == "stp":  # TODO: refactor this code once more format is added.
@@ -294,12 +297,19 @@ class CRDataset(Dataset):
                 inputs["target_cld_shdw"] = None
             if "dw" in self.aux_data:
                 dw_fpath = fpath.replace("s2_toa", "dw")
-                if os.path.exists(dw_fpath):
-                    dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                    dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
-                    inputs["target_dw"] = dw.unsqueeze(0)
-                else:
-                    raise ValueError(f"Dw file not found: {dw_fpath}") # TODO: fix this
+                if not os.path.exists(dw_fpath):
+                    # find a nearby dw image
+                    dw_fpaths = os.listdir(os.path.dirname(dw_fpath))
+                    while len(dw_fpaths) == 0:
+                        if timestamp.month >= 1 and timestamp.month < 12:
+                            dw_fpath = dw_fpath.replace(f"{timestamp.month}", f"{timestamp.month + 1}")
+                        else:
+                            dw_fpath = dw_fpath.replace(f"{timestamp.month}", f"{timestamp.month - 1}")
+                        dw_fpaths = os.listdir(os.path.dirname(dw_fpath))
+                    dw_fpath = os.path.join(os.path.dirname(dw_fpath), dw_fpaths[0])
+                dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
+                dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
+                inputs["target_dw"] = dw.unsqueeze(0)
             else:
                 inputs["target_dw"] = None
 
@@ -377,10 +387,9 @@ class CRDataset(Dataset):
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
-            print(inputs["target_dw"].permute(1, 0, 2, 3).shape, inputs_dw.permute(1, 0, 2, 3).shape)
             item_dict = {
-                "input_images": sample_stp,  # Shape: (C, T, H, W)
-                "target": target_image,  # Shape: (C, T, H, W)
+                "input_images": sample_stp,  # Shape: (C1(main+aux), T, H, W)
+                "target": target_image,  # Shape: (C2(main_sensor), T, H, W)
                 "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,
                 # Shape: (2, T, H, W)
                 "target_cld_shdw": inputs["target_cld_shdw"].permute(1, 0, 2, 3) if inputs[
@@ -388,8 +397,8 @@ class CRDataset(Dataset):
                 # Shape: (1, T, H, W)
                 "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
-                # Shape: (C, T, H, W)
-                "timestamps": None,  # TODO: implement this correctly.
+                # Shape: (T, H, W)
+                "timestamps": torch.tensor(timestamps),  # TODO: implement this correctly.
                 "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
                 "latlong": latlong,
             }

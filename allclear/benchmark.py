@@ -263,6 +263,7 @@ class BenchmarkEngine:
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
 
     def run(self):
+        print("Running Benchmark...")
         outputs_all = []
         targets_all = []
         target_non_cld_shdw_masks_all = []
@@ -312,7 +313,7 @@ class BenchmarkEngine:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Benchmarking Engine for Models and Datasets")
-    parser.add_argument("--baseline-base-path", type=str, required=True, help="Path to the baseline codebase")
+    parser.add_argument("--baseline-base-path", type=str, help="Path to the baseline codebase")
     parser.add_argument("--dataset-fpath", type=str, default="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json" ,required=True, help="Path to dataset metadata file")
     parser.add_argument("--model-name", type=str, required=True, help="Model to use for benchmarking")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for data loading")
@@ -377,5 +378,6 @@ if __name__ == "__main__":
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")
+    print("Loading Benchmark Engine...")
     engine = BenchmarkEngine(args)
     engine.run()

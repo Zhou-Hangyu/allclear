@@ -230,7 +230,9 @@ class CRDataset(Dataset):
             sensor_inputs = sample[sensor]
             for sensor_input in sensor_inputs:
                 timestamp, fpath = sensor_input
-                timestamp = datetime.strptime(timestamp, "%Y-%m-%d")
+                timestamp = datetime.strptime(timestamp, "%Y-%m-%d")                
+                if not os.path.exists(fpath): # Add this line to handle the case when the script is not running on Sun / Bala's server
+                    fpath = fpath.replace("/scratch/allclear/dataset_v3/", "/share/hariharan/cloud_removal/MultiSensor/")
                 image = self.load_and_center_crop(fpath, self.channels[sensor], self.center_crop_size)
                 image = self.preprocess(image, sensor, do_preprocess=self.do_preprocess)
                 inputs[sensor].append((timestamp, image))
@@ -278,6 +280,8 @@ class CRDataset(Dataset):
             if "target" not in sample.keys():
                 raise ValueError("Target is not available in the sample.")
             timestamp, fpath = sample["target"][0]
+            if not os.path.exists(fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
+                fpath = fpath.replace("/scratch/allclear/dataset_v3/", "/share/hariharan/cloud_removal/MultiSensor/")
             image = self.load_and_center_crop(fpath, self.channels[self.main_sensor], self.center_crop_size)
             image = self.preprocess(image, self.main_sensor, do_preprocess=self.do_preprocess)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]

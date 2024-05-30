@@ -8,20 +8,24 @@ allclear/baselines/PMAA/checkpoints0515
 allclear/baselines/PMAA/runs29
 allclear/baselines/PMAA/wandb
 
-
+allclear/baselines/SimpleUnet
+allclear/baselines/SimpleUnet/diffusers_src
 allclear/baselines/SimpleUnet/diffusers_src/__pycache__
 allclear/baselines/SimpleUnet/diffusers_src/*/__pycache__
-
-baselines/SimpleUnet/diffusers_src/__pycache__/
-baselines/SimpleUnet/diffusers_src/loaders/__pycache__/
-baselines/SimpleUnet/diffusers_src/models/__pycache__/
-baselines/SimpleUnet/diffusers_src/models/transformers/__pycache__/
+SimpleUnet/diffusers_src/
+baselines/SimpleUnet/diffusers_src/__pycache__
+baselines/SimpleUnet/diffusers_src
+baselines/SimpleUnet/diffusers_src/loaders/__pycache__
+baselines/SimpleUnet/diffusers_src/models/__pycache__
+baselines/SimpleUnet/diffusers_src/models/transformers/__pycache__
 
 allclear/baselines/U-TILISE/checkpoints
 temp
+utils
 
-
+allclear.egg-info
 data
+experiments
 experimental_scripts
 
 .idea
@@ -29,6 +33,7 @@ experimental_scripts
 .out
 .ipynb_checkpoints
 *__pycache__*
+*/__pycache__/*
 *.idea
 *.pyc
 *.out

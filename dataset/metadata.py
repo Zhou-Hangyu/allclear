@@ -6,9 +6,9 @@ import numpy as np
 from multiprocessing import Pool
 
 
-def nan_percentage(patch_info, channels=None):
+def nan_percentage(fpath, channels=None):
     """Calculate the NaN percentage for each patch."""
-    data = center_crop(patch_info["image_file_path"], channels=channels, size=(256, 256))
+    data = center_crop(fpath, channels=channels, size=(256, 256))
     nan_percentage = np.isnan(data).mean() * 100
     return {"nan_percentage": nan_percentage}
 
@@ -36,6 +36,7 @@ def cloud_shadow_percentage(patch_info):
             "cloud_percentage_0": -1,
             "cloud_percentage_30": -1,
             "shadow_percentage_30": -1,
+            "cld_shdw_nan_percentage": -1,
         }
         return data
     # Channels: "s2_cld_prb_s2cloudless", "clouds_30", "shadows_thres_20", "shadows_thres_25", "shadows_thres_30"
@@ -47,10 +48,12 @@ def cloud_shadow_percentage(patch_info):
     cloud_percent_0 = np.nanmean(cloud_mask_0) * 100
     cloud_percent_30 = np.nanmean(cloud_mask_30) * 100
     shd_percent_30 = np.nanmean(shd_mask_30) * 100
+    cld_shdw_nan_percentage = np.isnan(cld_shd).mean() * 100
     data = {
         "cloud_percentage_0": cloud_percent_0,
         "cloud_percentage_30": cloud_percent_30,
         "shadow_percentage_30": shd_percent_30,
+        "cld_shdw_nan_percentage": cld_shdw_nan_percentage,
     }
     return data
 
@@ -60,7 +63,8 @@ def process_general_data(df):
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
         try:
-            result = nan_percentage(row)
+            fpath = row["image_file_path"]
+            result = nan_percentage(fpath)
             results.append(pd.Series(result, name=index))
         except Exception as e:
             print(f"Error: {e}. Skipping patch {row['image_file_path']}")
@@ -97,7 +101,8 @@ def process_s2_data(df):
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
         try:
-            result1 = nan_percentage(row, channels=[1])
+            fpath = row["image_file_path"]
+            result1 = nan_percentage(fpath, channels=[1])
             result2 = cloud_shadow_percentage(row)
             result = {**result1, **result2}
             results.append(pd.Series(result, name=index))
@@ -233,9 +238,11 @@ if __name__ == "__main__":
     DATE_RANGE = [f'2022_{i}' for i in range(1, 13)]
     METADATA_GROUP = ['s1', 's2_toa', 'landsat8', 'landsat9']
     # SATS = ['s1', 's2_toa', 'dw', 'landsat8', 'landsat9']
-    # SATS = ['s2_toa']
+    SATS = ['s2_toa']
     # SATS = ['s2_toa', 's1', 'cld_shdw', 'dw']
-    SATS = ['s2_toa', 's1']
+    # SATS = ['s2_toa', 's1']
+    # SATS = ['s1']
+    # SATS = ['cld_shdw']
     # SATS = ["dw"]
     # SATS = ['cld_shdw']
 

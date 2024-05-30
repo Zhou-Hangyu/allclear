@@ -239,96 +239,89 @@ class Mosaicing(BaseModel):
         mosaiced_img[no_clear_views] = 0.5
 
         return mosaiced_img
-    
 
-class Simple3DUnet(BaseModel):
+class DAE(BaseModel):
     def __init__(self, args):
         super().__init__(args)
-        # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
-        to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
-
-        self.get_config(args)  # bug
+        self.eval_mode = "s2p"  # TODO: implement s2s too.
         self.model = self.get_model().to(self.device)
         self.model.eval()
-
+        self.channels = {
+            "s2_toa": list(range(1, 14)),
+            "s1": [1, 2],
+            "landsat8": list(range(1, 12)),
+            "landsat9": list(range(1, 12)),
+            "cld_shdw": [2, 5],
+            "dw": [1],
+        }
     def get_model_config(self):
         pass
 
     def get_model(self):
-
-        from SimpleUnet.diffusers_src import UNet3DConditionModel
-
+        from baselines.DAE.diffusers_src import UNet3DConditionModel
         down_block_dict = {"C": "DownBlock3D", "A": "CrossAttnDownBlock3D", "J": "DownBlockJust2D", "R": "CrossAttnDownBlock2D1D"}
         up_block_dict = {"C": "UpBlock3D", "A": "CrossAttnUpBlock3D", "J": "UpBlockJust2D", "R": "CrossAttnUpBlock2D1D"}
-        down_block_list = [down_block_dict[b] for b in self.model_blocks]
-        up_block_list = [up_block_dict[b] for b in self.model_blocks][::-1]
-
+        down_block_list = [down_block_dict[b] for b in self.args.dae_model_blocks]
+        up_block_list = [up_block_dict[b] for b in self.args.dae_model_blocks][::-1]
         model = UNet3DConditionModel(
-            sample_size=self.image_size,  # the target image resolution
-            in_channels=self.in_channel,  # the number of input channels, 3 for RGB images
-            out_channels=self.out_channel,  # the number of output channels
-            layers_per_block=1,  # how many ResNet layers to use per UNet block
-            block_out_channels=(128, 128, 256, self.max_dim, self.max_dim, self.max_dim, self.max_dim)[:len(self.model_blocks)],  # the number of output channels for each UNet block
+            sample_size=self.args.dae_image_size,  # the target image resolution
+            in_channels=self.args.dae_in_channel,  # the number of input channels, 3 for RGB images
+            out_channels=self.args.dae_out_channel,  # the number of output channels
+            layers_per_block=self.args.dae_LPB,  # how many ResNet layers to use per UNet block
+            block_out_channels=(self.args.dae_max_d0, 128, 256, self.args.dae_max_dim, self.args.dae_max_dim, self.args.dae_max_dim, self.args.dae_max_dim)[:len(self.args.dae_model_blocks)],  # the number of output channels for each UNet block
             down_block_types=down_block_list,  # the down block sequence
             up_block_types=up_block_list,  # the up block sequence
-            norm_num_groups=self.num_groups,  # the number of groups for normalization
+            norm_num_groups=self.args.dae_norm_num_groups,  # the number of groups for normalization
         )
-
-        params = torch.load(self.checkpoint, map_location=torch.device('cpu'))
-        for key in params.keys():
-            if "custom_pos_embed.position" in key: break
-        params_pos_length = params[key].size(1)
-        self.update_model_position_token(model, self.compute_day_differences(torch.zeros((1,params_pos_length))))
-        self.update_model_number_position_token(model)
-        model.load_state_dict(params, strict=False)
-        model.eval()
-
+        params = torch.load(self.args.dae_checkpoint, map_location=torch.device('cpu'))
+        filtered_params = {k: v for k, v in params.items() if "custom_pos_embed.position" not in k}
+        model.load_state_dict(filtered_params, strict=False)
+        # for key in params.keys():
+        #     if "custom_pos_embed.position" in key: break
+        # self.update_model_number_position_token(model) # TODO: figure out what these are
         return model
 
-    def get_config(self, args):
-
-        self.batch_size = args.batch_size
-        self.image_size = args.su_image_size
-        self.in_channel = args.su_in_channel
-        self.out_channel = args.su_out_channel
-        self.max_dim = args.su_max_dim
-        self.model_blocks = args.su_model_blocks
-        self.num_groups = args.su_num_groups
-        self.checkpoint = args.su_checkpoint
-        self.num_pos_tokens = args.su_num_pos_tokens
-
     def preprocess(self, inputs):
+        if self.eval_mode == "s2p":
+            # Insert a dummy image (all cloud or no info) at the correct temporal position for each sensor of the target image to mimic s2p.
+            s2_toa_placeholder = torch.zeros(len(self.channels['s2_toa']), 1, *inputs["target"].shape[2:])
+            s1_placeholder = torch.zeros(len(self.channels['s1']), 1, *inputs["target"].shape[2:]) - 1
+            target_placeholder = torch.cat([s2_toa_placeholder, s1_placeholder], dim=0).squeeze(1)
+            s2p_input_images = []
+            s2p_targets = []
+            s2p_timestamps = []
+            s2p_target_indices = []
+            for i in range(inputs["target"].shape[0]):
+                target_index = (inputs['timestamps'][i] <= inputs['target_timestamps'][i]).sum()
+                s2p_input_image = torch.cat([inputs["input_images"][i, :, :target_index],
+                                             target_placeholder,
+                                             inputs["input_images"][i, :, target_index:]], dim=1)
+                # s2p_target = torch.cat([inputs["input_images"][i, :len(self.channels['s2_toa']), :target_index],
+                #                         inputs["target"][i],
+                #                         inputs["input_images"][i, :len(self.channels['s2_toa']), target_index:]], dim=1)
+                s2p_timestamp = torch.cat([inputs['timestamps'][i, :target_index], inputs['target_timestamps'][i].unsqueeze(0), inputs['timestamps'][i, target_index:]], dim=0)
+                s2p_input_images.append(s2p_input_image)
+                # s2p_targets.append(s2p_target)
+                s2p_timestamps.append(s2p_timestamp)
+                s2p_target_indices.append(target_index)
+            inputs["input_images"] = torch.stack(s2p_input_images)
+            # inputs["target"] = torch.stack(s2p_targets)
+            inputs["timestamps"] = torch.stack(s2p_timestamps)
+            inputs["time_differences"] = self.compute_day_differences(inputs["timestamps"])
+            inputs["target_indices"] = torch.tensor(s2p_target_indices)
+            # print(inputs['timestamps'].shape, inputs['target_timestamps'].shape)
+            # target_index = (inputs['timestamps'] <= inputs['target_timestamps']).sum(dim=1)
+            # s2p_input_images = torch.cat([inputs["input_images"][:,:,:target_index],
+            #                                     target_placeholder,
+            #                                     inputs["input_images"][:,:,target_index:]], dim=2)
+            # inputs["target"] = torch.cat([inputs["input_images"][:,:,:target_index],
+            #                                     inputs["target"],
+            #                                     inputs["input_images"][:,:,target_index:]], dim=2)
+            # inputs["input_images"] = s2p_input_images
+        inputs["input_images"] = inputs["input_images"].to(self.device)  # (B, C, T, H, W)
+        inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)
+        return inputs  # Other preprocessing steps handled by the dataloader
 
-        assert self.args.eval_mode == "sr"
-
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
-        inputs["input_cloud_masks"] = inputs["input_cloud_masks"].to(self.device)
-        inputs["input_shadow_masks"] = inputs["input_shadow_masks"].to(self.device)
-
-        # for key in inputs:
-        #     print(key, inputs[key].shape)
-
-        """
-        input_images: [1, 3, 14, 256, 256],
-            - the 13 and 14th bands are no use
-            - change from [B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B11, B12]
-            - change from [B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, _, B11, B12, _, _]
-        """
-
-        bs =  inputs["input_images"].shape[0]
-        input_imgs_placeholder = torch.zeros((bs, 3, 15, 256, 256)).to(self.device)
-        input_imgs_placeholder[:, :, :10] = inputs["input_images"][:, :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
-        input_imgs_placeholder[:, :, 11:13] = inputs["input_images"][:, :, [10, 11]]
-        inputs["input_images"] = input_imgs_placeholder
-
-        target_placeholder = torch.zeros((bs, 1, 13, 256, 256)).to(self.device)
-        target_placeholder[:, :, :10] = inputs["target"][:, :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
-        target_placeholder[:, :, 11:13] = inputs["target"][:, :, [10, 11]]
-        inputs["target"] = target_placeholder
-
-        return inputs
-    
     def compute_day_differences(self, timestamps):
         timestamp_diffs = timestamps - timestamps[:, 0:1]
         day_diffs = (timestamp_diffs / 86400).round().to(self.device)
@@ -339,20 +332,20 @@ class Simple3DUnet(BaseModel):
             if 'position' in p1:
                 p2.data = day_diffs
 
-    def update_model_number_position_token(self, model):
-        
-        for name, p2 in model.named_buffers():
-            # print(name)
-            if "custom_pos_embed.pe" in name:
-                _, old_max_seq_len, old_embed_dim = p2.shape
-                new_buffer = torch.zeros((_, self.num_pos_tokens, old_embed_dim))
-
-                # Access the attribute dynamically to replace the original buffer
-                parts = name.split('.')
-                obj = model
-                for part in parts[:-1]:
-                    obj = getattr(obj, part)
-                setattr(obj, parts[-1], new_buffer)
+    # def update_model_number_position_token(self, model):
+    #
+    #     for name, p2 in model.named_buffers():
+    #         # print(name)
+    #         if "custom_pos_embed.pe" in name:
+    #             _, old_max_seq_len, old_embed_dim = p2.shape
+    #             new_buffer = torch.zeros((_, self.num_pos_tokens, old_embed_dim))
+    #
+    #             # Access the attribute dynamically to replace the original buffer
+    #             parts = name.split('.')
+    #             obj = model
+    #             for part in parts[:-1]:
+    #                 obj = getattr(obj, part)
+    #             setattr(obj, parts[-1], new_buffer)
 
     def forward(self, inputs):
         """Refer to `prepare_data_multi()`
@@ -369,29 +362,17 @@ class Simple3DUnet(BaseModel):
             - input_imgs: [0,1] -> [-1,1]
             - input_imgs channels: (B1, B2, B3, B4, B5, B6, B7, B8, B8A, B9, B10, B11, B12) -> (B4, B3, B2, B5, B6, B7, B8, B8A, B11, B12) + (dummy, dummy), dummy = 0
         """
-
-        BS, T, C, H, W = inputs["input_images"].shape
-        
-        # Input transformation
-        input_imgs = inputs["input_images"] * 2 - 1
-        input_imgs = input_imgs.permute(0, 2, 1, 3, 4)
-        # input_imgs = input_imgs[:, [3, 2, 1, 4, 5, 6, 7, 8, 11, 12, 12, 12]]
-        # input_imgs[:, -2:] = -1
-        input_imgs = input_imgs.to(self.device)
-
-        
-        input_buffer = torch.ones((BS, 15, 4, H, W)).to(self.device) * -1
-        input_buffer[:, :, :3] = input_imgs
-
-        day_counts = torch.arange(4).to(self.device).unsqueeze(0).repeat(BS, 1).float() * 3
-
-        self.update_model_position_token(self.model, day_counts)
-        emb = torch.zeros((BS, 2, 1024)).to(self.args.device)
-
+        self.update_model_position_token(self.model, inputs["time_differences"])
+        emb = torch.zeros((inputs["input_images"].shape[0], 2, 1024)).to(self.device) # TODO: figure out what these are
         with torch.no_grad():
-            with torch.autocast(device_type="cuda", dtype=torch.float16):
-                prediction = self.model(input_buffer, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-        prediction = prediction[:, :, 3:4].permute(0, 2, 1, 3, 4).float()
+            # pred = self.model(inputs["input_images"][:,:,:4,...], 1, encoder_hidden_states=emb, return_dict=False)[0]
+            pred = self.model(inputs["input_images"], 1, encoder_hidden_states=emb, return_dict=False)[0]
+            if self.eval_mode == "s2p":
+                preds = []
+                for i in range(pred.shape[0]):
+                    preds.append(pred[i, :,inputs["target_indices"][i], ...].unsqueeze(1))
+                pred = torch.stack(preds, dim=0)
+            pred = pred.permute(0, 2, 1, 3, 4)  # (B, C, T, H, W) -> (B, T, C, H, W)
 
         # # save prediction and input_imgs, and targets results in numpy format
         # self.args.res_dir = "/share/hariharan/ck696/Decloud/UNet/results/test_buffer"
@@ -407,7 +388,7 @@ class Simple3DUnet(BaseModel):
         # print(f"Input buffer min: {input_buffer.min()}, max: {input_buffer.max()}")
         # assert 0 == 1
 
-        return  {"output": prediction}
+        return {"output": pred}
     
 
 class CTGAN(BaseModel):

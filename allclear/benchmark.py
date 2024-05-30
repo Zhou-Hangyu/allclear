@@ -22,7 +22,7 @@ torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of
 
 
 from allclear import CRDataset
-from allclear import UnCRtainTS, LeastCloudy, Mosaicing, Simple3DUnet, CTGAN, UTILISE, PMAA, DiffCR
+from allclear import UnCRtainTS, LeastCloudy, Mosaicing, DAE, CTGAN, UTILISE, PMAA, DiffCR
 
 
 # Logger setup
@@ -31,15 +31,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 class Metrics:
     """
-    outputs and targets shape: (B, T, C, H, W)
+    Required shapes:
+    - outputs: (B, T, C, H, W)
+    - targets: (B, 1, C, H, W)
+    - masks: (B, 1, 1, H, W)
     """
     def __init__(self, outputs, targets, masks, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
         self.device = torch.device(device)
-        self.outputs = outputs.view(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
-        self.targets = targets.view(-1, *targets.shape[2:])
-        self.masks = masks.view(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
+        self.outputs = outputs.reshape(-1, *outputs.shape[2:]) # (B, T, C, H, W) -> (B*T, C, H, W)
+        self.targets = targets.reshape(-1, *targets.shape[2:])
+        self.masks = masks.reshape(-1, *masks.shape[2:]).repeat(1, targets.shape[2], 1, 1) # broadcast masks to all time steps
         if lulc_maps is not None:
-            self.lulc_maps = lulc_maps.view(-1, *lulc_maps.shape[2:])
+            self.lulc_maps = lulc_maps.reshape(-1, *lulc_maps.shape[2:])
             self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
         self.batch_size = batch_size
 
@@ -79,8 +82,6 @@ class Metrics:
         num_batches = (self.outputs.shape[0] + self.batch_size - 1) // self.batch_size
         maes, rmses, psnrs, sams, ssims = [], [], [], [], []
 
-        # print("mask shape": masks.shape)
-        # print(f"Mask shape: {masks.shape}")
 
         for i in tqdm(range(num_batches), desc="Processing batches"):
             start = i * self.batch_size
@@ -91,7 +92,7 @@ class Metrics:
 
             assert batch_outputs.shape == batch_targets.shape, f"Output Shape: {batch_outputs.shape}, Target Shape: {batch_targets.shape}"
             if batch_outputs.shape != batch_masks.shape:
-                print("The shape of the output and mask is different")
+                print(f"The shape of the output ({batch_outputs.shape}) and mask ({batch_masks.shape}) is different")
                 print("Select the first channel of the mask as the mask for the output")
                 assert batch_outputs.size(0) == batch_masks.size(0)
                 assert batch_outputs.size(2) == batch_masks.size(2)
@@ -228,8 +229,8 @@ class BenchmarkEngine:
             model = LeastCloudy(self.args)
         elif self.args.model_name == "mosaicing":
             model = Mosaicing(self.args)
-        elif self.args.model_name == "simpleunet":
-            model = Simple3DUnet(self.args)
+        elif self.args.model_name == "dae":
+            model = DAE(self.args)
         elif self.args.model_name == "ctgan":
             model = CTGAN(self.args)
         elif self.args.model_name == "utilise":
@@ -270,7 +271,7 @@ class BenchmarkEngine:
             with torch.no_grad():
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
-                target_cld_shdw_mask = (data["target_cld_shdw"][0] + data["target_cld_shdw"][1]) > 0
+                target_cld_shdw_mask = (data["target_cld_shdw"][:,0,...] + data["target_cld_shdw"][:,1,...]) > 0
                 target_non_cld_shdw_mask = torch.logical_not(target_cld_shdw_mask).cpu()
                 target_non_cld_shdw_masks_all.append(target_non_cld_shdw_mask)
                 target_lulc_maps.append(data["target_dw"].cpu())
@@ -290,10 +291,9 @@ class BenchmarkEngine:
 
         outputs = torch.cat(outputs_all, dim=0)
         targets = torch.cat(targets_all, dim=0)
-        masks = torch.cat(target_non_cld_shdw_masks_all, dim=0)
+        masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
         lulc_maps = torch.cat(target_lulc_maps, dim=0)
-
-        metrics = Metrics(outputs, targets, masks, lulc_maps=lulc_maps)
+        metrics = Metrics(outputs, targets, masks, device=self.device, lulc_maps=lulc_maps)
         results = metrics.evaluate_aggregate()
         print(results)
 
@@ -341,22 +341,23 @@ def parse_arguments():
     uc_args.add_argument("--uc-weight-folder", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/results", help="Folder containing weights for UnCRtainTS")
     uc_args.add_argument("--uc-s1", type=int, default=0, help="0: No Sentinel-1, 1: Include Sentinel-1")
 
-    su_args = parser.add_argument_group("Simple3DUnet Arguments")
-    su_args.add_argument("--su-image-size", type=int, default=256, help="Image size for Simple3DUnet")
-    su_args.add_argument("--su-in-channel", type=int, default=12, help="Input channels for Simple3DUnet")
-    su_args.add_argument("--su-out-channel", type=int, default=3, help="Output channels for Simple3DUnet")
-    su_args.add_argument("--su-max-dim", type=int, default=512, help="Max dimension for Simple3DUnet")
-    su_args.add_argument("--su-model-blocks", type=str, default="CRRAAA", help="Model blocks for Simple3DUnet")
-    su_args.add_argument("--su-num-groups", type=int, default=4, help="Number of groups for normalization in Simple3DUnet")
-    su_args.add_argument("--su-checkpoint", type=str, default="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_12.pt", help="Checkpoint for Simple3DUnet")
-    su_args.add_argument("--su-num_pos_tokens", type=int, default=128, help="Checkpoint for Simple3DUnet")
+    dae_args = parser.add_argument_group("DAE Arguments")
+    dae_args.add_argument("--dae-image-size", type=int, default=256, help="Image size for DAE")
+    dae_args.add_argument("--dae-in-channel", type=int, default=12, help="Input channels for DAE")
+    dae_args.add_argument("--dae-out-channel", type=int, default=13, help="Output channels for DAE")
+    dae_args.add_argument("--dae-LPB", type=int, default=1, help="Layer per block")
+    dae_args.add_argument("--dae-max-d0", type=int, default=128, help="The maximum dimension")
+    dae_args.add_argument("--dae-max-dim", type=int, default=512, help="Max dimension for DAE")
+    dae_args.add_argument("--dae-model-blocks", type=str, default="CCCCAA", help="Model blocks for DAE")
+    dae_args.add_argument("--dae-norm-num-groups", type=int, default=4, help="Number of groups for normalization in DAE")
+    dae_args.add_argument("--dae-checkpoint", type=str, default="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae/'model_test-run-3-loss2*10_0_9800.pt'", help="Checkpoint for DAE")
 
-    su_args = parser.add_argument_group("PMAA Arguments")
-    su_args.add_argument("--pmaa-model", type=str, default="new", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
-    su_args.add_argument("--pmaa-checkpoint", type=str, default='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth', help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
+    dae_args = parser.add_argument_group("PMAA Arguments")
+    dae_args.add_argument("--pmaa-model", type=str, default="new", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
+    dae_args.add_argument("--pmaa-checkpoint", type=str, default='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth', help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
 
-    su_args = parser.add_argument_group("DiffCR Arguments")
-    su_args.add_argument("--diff-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
+    dae_args = parser.add_argument_group("DiffCR Arguments")
+    dae_args.add_argument("--diff-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
 
     args = parser.parse_args()
     return args
@@ -372,7 +373,7 @@ if __name__ == "__main__":
             '--root3', benchmark_args.uc_root3,
             '--weight_folder', benchmark_args.uc_weight_folder])
         args = argparse.Namespace(**{**vars(uc_args), **vars(benchmark_args)})
-    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "simpleunet", "ctgan", "utilise", "pmaa", "diffcr"]:
+    elif benchmark_args.model_name in ["leastcloudy", "mosaicing", "dae", "ctgan", "utilise", "pmaa", "diffcr"]:
         args = benchmark_args
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")

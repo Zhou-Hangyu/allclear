@@ -158,15 +158,12 @@ class CRDataset(Dataset):
         cld_shdw_fpaths: list of file path to all cloud and shadow masks in the dataset,
         where cloud in channel 1, shadow in channel 2."""
         while True: # Retry until a valid cloud shadow mask is loaded
-            try:
-                idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
-                cld_shdw_fpath = self.cld_shdw_fpaths[idx]
+            idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
+            cld_shdw_fpath = self.cld_shdw_fpaths[idx]
+            if os.path.exists(cld_shdw_fpath):
                 cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
                 cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
                 break
-            except Exception as e:
-                print(e)
-                continue
         if torch.rand(1).item() > 0.5:
             cld_shdw = torch.flip(cld_shdw, dims=[1])
         if torch.rand(1).item() > 0.5:
@@ -383,8 +380,10 @@ class CRDataset(Dataset):
             if self.target_mode == "s2p":
                 target_image = inputs["target"][0][1]
                 target_image = target_image.unsqueeze(1)
+                target_timestamps = datetime.strptime(inputs["target"][0][0], "%Y-%m-%d").timestamp()
             elif self.target_mode == "s2s":
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
+                target_timestamps = timestamps
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
             item_dict = {
@@ -397,8 +396,8 @@ class CRDataset(Dataset):
                 # Shape: (1, T, H, W)
                 "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
-                # Shape: (T, H, W)
-                "timestamps": torch.tensor(timestamps),  # TODO: implement this correctly.
+                "timestamps": torch.tensor(timestamps), # Shape: (T)
+                "target_timestamps": torch.tensor(target_timestamps),
                 "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
                 "latlong": latlong,
             }

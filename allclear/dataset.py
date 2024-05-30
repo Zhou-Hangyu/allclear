@@ -6,6 +6,7 @@ import rasterio as rs
 import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
+import glob
 
 
 
@@ -215,6 +216,12 @@ class CRDataset(Dataset):
                 image = image
             return image
 
+    @staticmethod
+    def extract_date(path):
+        parts = path.split('_')
+        date_str = parts[-4] + '-' + parts[-3] + '-' + parts[-2]
+        return datetime.strptime(date_str, '%Y-%m-%d')
+
     def __getitem__(self, idx):
         # with Profile() as prof:
         sample = self.dataset[str(idx)]
@@ -296,18 +303,13 @@ class CRDataset(Dataset):
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
             else:
                 inputs["target_cld_shdw"] = None
-            if "dw" in self.aux_data:
+            if "dw" in self.aux_data and fpath.endswith("tif"):
                 dw_fpath = fpath.replace("s2_toa", "dw")
                 if not os.path.exists(dw_fpath):
-                    # find a nearby dw image
-                    dw_fpaths = os.listdir(os.path.dirname(dw_fpath))
-                    while len(dw_fpaths) == 0:
-                        if timestamp.month >= 1 and timestamp.month < 12:
-                            dw_fpath = dw_fpath.replace(f"{timestamp.month}", f"{timestamp.month + 1}")
-                        else:
-                            dw_fpath = dw_fpath.replace(f"{timestamp.month}", f"{timestamp.month - 1}")
-                        dw_fpaths = os.listdir(os.path.dirname(dw_fpath))
-                    dw_fpath = os.path.join(os.path.dirname(dw_fpath), dw_fpaths[0])
+                    dw_fpath = fpath.rsplit('/', 1)[0].rsplit('/', 1)[0].rsplit('/', 1)[0] + "/2022_*/dw/*"
+                    dw_fpaths = glob.glob(dw_fpath)
+                    given_date = datetime.strptime(timestamp, "%Y-%m-%d") if isinstance(timestamp, str) else timestamp
+                    dw_fpath = min(dw_fpaths, key=lambda path: abs(self.extract_date(path) - given_date))
                 dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
                 dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                 inputs["target_dw"] = dw.unsqueeze(0)

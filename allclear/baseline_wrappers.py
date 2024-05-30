@@ -118,12 +118,15 @@ class UnCRtainTS(BaseModel):
         return config
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["input_images"] = inputs["input_images"].to(self.device)
+        inputs["target"] = inputs["target"].to(self.device)
         inputs["input_cld_shdw"] = inputs["input_cld_shdw"].to(self.device)
         inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)
         inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
+
+        # print("input_images", inputs["input_images"].shape)
+        # print("target", inputs["target"].shape)
 
         return inputs
 
@@ -157,6 +160,21 @@ class UnCRtainTS(BaseModel):
                 var = out[:, :, self.S2_BANDS :, ...]
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
+
+        # save the output and input images in numpy format
+        # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
+        # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"
+        # target_dir = "/share/hariharan/ck696/allclear/experiments/target.npy"
+        # import numpy as np
+        # np.save(input_dir, input_imgs.cpu().numpy())
+        # np.save(output_dir, out.cpu().numpy())
+        # np.save(target_dir, target_imgs.cpu().numpy())
+
+        # print(input_imgs.max(), input_imgs.min())
+        # print(out.max(), out.min())
+        # print(target_imgs.max(), target_imgs.min())
+        # assert 0 == 1
+            
         return {"output": out, "variance": var}
 
 
@@ -371,11 +389,8 @@ class CTGAN(BaseModel):
     def __init__(self, args):
         super().__init__(args)
 
-        args.image_size = 256
-        args.load_gen = '/share/hariharan/ck696/allclear/baselines/CTGAN/Pretrain/G_epoch97_PSNR21.259-002.pth'
-        
-        self.image_size = args.image_size
-        self.load_gen = args.load_gen
+        self.image_size = 256
+        self.load_gen = args.ctgan_gen_checkpoint
 
         from baselines.CTGAN.model.CTGAN import CTGAN_Generator
 
@@ -387,33 +402,32 @@ class CTGAN(BaseModel):
         self.model.eval()
 
         # Bands: R, G, B, NIR
-        # self.bands = (3,2,1,7)
-        self.bands = (1,2,3,7)
+        if "Pretrain" in args.ctgan_gen_checkpoint:
+            self.bands = (1,2,3,7)
+        elif "checkpoints" in args.ctgan_gen_checkpoint:
+            self.bands = (3,2,1,7)
+        else:
+            raise ValueError("Invalid CTGAN model checkpoint")
+        
+        print("bands", self.bands)
 
     def get_model_config(self):
         pass
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:, :, self.bands]
+        inputs["input_images"] = inputs["input_images"][:, self.bands].to(self.device)
+        inputs["target"] = inputs["target"][:, self.bands].permute(0,2,1,3,4).to(self.device)
         return inputs
 
-    def forward(self, inputs):
-        """Refer to `prepare_data_multi()`
-        Shapes:
-            - input_imgs: (B, T, C, H, W)
-            - target_imgs: (B, 1, C, H, W)
-            - masks: (B, T, H, W)
-            - dates: (B, T)
-        """
-        # Size of the model input is (T, BS, C, H, W)
-        # Size of the model output is (BS, C, H, W)
-        input_imgs = inputs["input_images"][:,:,self.bands] * 2 - 1
-        self.model = self.model.to(self.device)
-        output, _, _ = self.model(input_imgs)
-        output = output.unsqueeze(1) * 0.5 + 0.5
-        return {"output": output}
+    def preprocess_input(self, batch):
+        real_As = batch["input_images"] * 2 - 1
+        return [real_As[:,:,0].cuda(), real_As[:,:,1].cuda(), real_As[:,:,2].cuda()]
     
+    def forward(self, inputs):
+        real_A  = self.preprocess_input(inputs)
+        fake_B, cloud_mask, aux_pred = self.model(real_A)
+        output = fake_B.unsqueeze(1) * 0.5 + 0.5
+        return {"output": output}
 
 
 class UTILISE(BaseModel):

@@ -54,8 +54,9 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
     main_sensor_df = sensors[main_sensor].copy()
     main_sensor_df = preprocess(main_sensor_df)
     if main_sensor == 's2_toa':
-        # filter out images without cloud and shadow information
+        # filter out images without cloud and shadow information or with nan values in their cloud and shadow masks
         main_sensor_df = main_sensor_df[main_sensor_df['cloud_percentage_30'] != -1]
+        main_sensor_df = main_sensor_df[main_sensor_df['cld_shdw_nan_percentage'] == 0]
     main_sensor_df['total_cloud_shadow'] = main_sensor_df['cloud_percentage_30'] + main_sensor_df['shadow_percentage_30']
     main_sensor_df['clear_image_flag'] = main_sensor_df['total_cloud_shadow'] < 10
 
@@ -153,9 +154,11 @@ if __name__ == "__main__":
     auxiliary_sensor_metadata = {sensor: pd.read_csv(metadata) for sensor, metadata in zip(args.auxiliary_sensors, args.auxiliary_sensor_metadata)}
     sensors = {args.main_sensor: main_sensor_metadata, **auxiliary_sensor_metadata}
     dataset = construct_dataset(sensors, main_sensor=args.main_sensor, tx=args.tx, mode=args.mode)
-    with open(f'{args.output_dir}/{args.mode}_tx{str(args.tx)}_{args.version}.json', 'w') as f:
-        json.dump(dataset, f)
-    intermediate_names = args.main_sensor_metadata.split("_metadata.csv")[0].split("_")
+
+    intermediate_names = args.main_sensor_metadata.split("/")[-1].split("_metadata.csv")[0].split("_")
     dataset_string = f"{intermediate_names[-2]}_{intermediate_names[-1]}"
+    fpath = f"{args.output_dir}/{args.mode}_tx{str(args.tx)}_{dataset_string}_{args.version}.json"
+    with open(fpath, 'w') as f:
+        json.dump(dataset, f)
     print(f"Found {len(dataset)} entries in the dataset")
-    print(f"Dataset saved to {args.output_dir}/{args.mode}_tx{str(args.tx)}_{dataset_string}_{args.version}.json")
+    print(f"Dataset saved to {fpath}")

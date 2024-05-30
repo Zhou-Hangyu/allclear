@@ -306,10 +306,14 @@ class CRDataset(Dataset):
             if "dw" in self.aux_data and fpath.endswith("tif"):
                 dw_fpath = fpath.replace("s2_toa", "dw")
                 if not os.path.exists(dw_fpath):
-                    dw_fpath = fpath.rsplit('/', 1)[0].rsplit('/', 1)[0].rsplit('/', 1)[0] + "/2022_*/dw/*"
+                    dw_fpath = fpath.rsplit('/', 1)[0].rsplit('/', 1)[0].rsplit('/', 1)[0] + "/2022_*/dw/*.tif"
                     dw_fpaths = glob.glob(dw_fpath)
                     given_date = datetime.strptime(timestamp, "%Y-%m-%d") if isinstance(timestamp, str) else timestamp
                     dw_fpath = min(dw_fpaths, key=lambda path: abs(self.extract_date(path) - given_date))
+                # check if the fiilw is ends with .tif
+                if not dw_fpath.endswith("tif"):
+                    print("not ending with tif")
+                    dw_fpath = dw_fpath + "/*.tif"
                 dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
                 dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                 inputs["target_dw"] = dw.unsqueeze(0)

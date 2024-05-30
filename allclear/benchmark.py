@@ -248,7 +248,28 @@ class BenchmarkEngine:
             dataset = json.load(f)
         with open(self.args.cld_shdw_fpaths, "r") as f:
             cld_shdw_fpaths = json.load(f)
-        selected_rois = self.args.selected_rois if self.args.selected_rois is not None else "all"
+        print(f"Selected ROIs: {self.args.selected_rois}")
+        selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
+        
+        if self.args.unique_roi == 1:
+            # selected_rois = "unique"
+            print(f"Number of total ROIs: {len(dataset)}")
+            unique_dataset = {}
+            unique_indices = []
+            count = 0
+            prev_id = "0"
+            for ID, info in dataset.items():
+                roi_id = info["roi"][0]
+                if prev_id == roi_id or roi_id in unique_indices: 
+                    unique_indices.append(roi_id)
+                else:
+                    unique_dataset[str(count)] = dataset[ID]
+                    count += 1
+                    prev_id = roi_id
+            dataset = unique_dataset
+            # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
+            print(f"Number of unique ROIs: {len(dataset)}")
+        
         dataset = CRDataset(
             dataset=dataset,
             selected_rois=selected_rois,
@@ -268,6 +289,8 @@ class BenchmarkEngine:
         targets_all = []
         target_non_cld_shdw_masks_all = []
         target_lulc_maps = []
+
+        print(f"len of data_loader: {len(self.data_loader)}")
         for data in tqdm(self.data_loader, desc="Running Benchmark"):
             with torch.no_grad():
                 data = self.model.preprocess(data)
@@ -333,6 +356,8 @@ def parse_arguments():
     parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines", help="Path to save the experiment results")
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
+    parser.add_argument("--unique-roi", type=int, default=0, help="0 uses all metadata, 1 uses only unique ROI")
+    
 
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
@@ -360,6 +385,9 @@ def parse_arguments():
     dae_args = parser.add_argument_group("DiffCR Arguments")
     dae_args.add_argument("--diff-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
 
+    # ctgan
+    ctgan_args = parser.add_argument_group("CTGAN Arguments")
+    ctgan_args.add_argument("--ctgan-gen-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/CTGAN/Pretrain/G_epoch97_PSNR21.259-002.pth", help="Generator checkpoint for CTGAN")
     args = parser.parse_args()
     return args
 

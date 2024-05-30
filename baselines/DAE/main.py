@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from diffusers.optimization import get_cosine_schedule_with_warmup
-from experimental_scripts.DAE.diffusers_src import UNet3DConditionModel
+from baselines.DAE.diffusers_src import UNet3DConditionModel
 
 from utils.visualize import visualization_v44
 
@@ -32,7 +32,7 @@ def parse_arguments():
 
     parser.add_argument("--in-channel", type=int, default=15, help="number of input channel")
     parser.add_argument("--out-channel", type=int, default=13, help="number of output channel")
-    parser.add_argument("--max-time-span", type=int, default=12, help="The number of frame")
+    parser.add_argument("--tx", type=int, default=3, help="The number of frame")
 
     # cross_attention_dim
     parser.add_argument("--norm-num-groups", type=int, default=32, help="The number of group for normalization")
@@ -210,7 +210,7 @@ if __name__ == "__main__":
             accelerator.log(logs, step=global_step)
             global_step += 1
 
-            if accelerator.is_main_process and bid % 100 == 0 and bid > 0:
+            if accelerator.is_main_process and bid % 1 == 0 and bid > 0:
                 # save checkpoint
                 PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}_{bid}.pt")
                 accelerator.save(model.state_dict(), PATH)
@@ -242,11 +242,11 @@ if __name__ == "__main__":
                         total_loss2 += loss2.item()
                         total_loss += loss.item()
                         num_samples += 1
-                    # visualization_v44(args, data['target'], pred, loss_mask, data['input_images'], pred, data['time_differences'], scale=0.2, auto=False)
-                    # visualization_v44(args, data['target'], pred, loss_mask, data['input_images'], pred,
-                    #                   data['time_differences'], scale=0.3, auto=False)
-                    # visualization_v44(args, data['target'], pred, loss_mask, data['input_images'], pred,
-                    #                   data['time_differences'], scale=1.0, auto=False)
+                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred, data['time_differences'], scale=0.2, auto=False)
+                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
+                                      data['time_differences'], scale=0.3, auto=False)
+                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
+                                      data['time_differences'], scale=1.0, auto=False)
                     if num_samples == max_samples:
                         break
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Command: bash experimental_scripts/SimpleUnet/train_wo_ddp.sh
+# Command: bash baselines/DAE/train_wo_ddp.sh
 
-SCRIPT_PATH="experimental_scripts/SimpleUnet/main.py"
+SCRIPT_PATH="baselines/DAE/main.py"
 #SCRIPT_PATH="experimental_scripts/SimpleUnet/main_v2.py"
 MODE="train"
 LR=1e-5
@@ -13,7 +13,7 @@ MODEL_BLOCKS="CCCCAA"
 WANDB=1
 NORM_NUM_GROUPS=4
 NUM_WORKERS=8
-RUN_NAME="test-run-3-loss2*10"
+RUN_NAME="test-run-4"
 DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx3_train_20k_v1.json"
 OUTPUT_DIR="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae"
 

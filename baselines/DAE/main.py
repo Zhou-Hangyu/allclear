@@ -32,7 +32,6 @@ def parse_arguments():
 
     parser.add_argument("--in-channel", type=int, default=15, help="number of input channel")
     parser.add_argument("--out-channel", type=int, default=13, help="number of output channel")
-    parser.add_argument("--tx", type=int, default=3, help="The number of frame")
 
     # cross_attention_dim
     parser.add_argument("--norm-num-groups", type=int, default=32, help="The number of group for normalization")
@@ -48,6 +47,12 @@ def parse_arguments():
     parser.add_argument("--output-dir", type=str,
                         default="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae",
                         help="The output directory")
+    parser.add_argument("--main-sensor", type=str, default="s2_toa", help="Main sensor for the dataset")
+    parser.add_argument("--aux-sensors", type=str, nargs="+", help="Auxiliary sensors for the dataset")
+    parser.add_argument("--aux-data", type=str, nargs="+",default=["cld_shdw", "dw"], help="Auxiliary data for the dataset")
+    parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
+    parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
+    parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
 
     # Reproducibility
     parser.add_argument("--seed", type=int, default=0, help="The random seed")
@@ -65,13 +70,12 @@ if __name__ == "__main__":
     args = parse_arguments()
     with open(args.dataset) as f:
         dataset = json.load(f)
-    selected_rois = "all"
-    main_sensor = "s2_toa"
-    aux_sensors = ["s1"]
-    aux_data = ["cld_shdw"]
-    tx = 3
-    # target_mode = "s2p"
-    target_mode = "s2s"
+    main_sensor = args.main_sensor
+    aux_sensors = args.aux_sensors
+    aux_data = args.aux_data
+    tx = args.tx
+    target_mode = args.target_mode
+
     with open("/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json") as f:
         cld_shdw_fpaths = json.load(f)
 
@@ -81,7 +85,7 @@ if __name__ == "__main__":
     with open("/share/hariharan/cloud_removal/metadata/v3/val_rois_20k.txt") as f:
         val_rois = f.read().splitlines()
 
-    runname = f"{args.runname}_{args.model_type}_{args.model_blocks}_{args.lr}_{args.norm_num_groups}_{args.max_d0}_{args.max_dim}_{args.postfix}"
+    runname = f"{args.runname}"
 
     # Set up the data
     train_dataset = CRDataset(dataset=dataset,
@@ -95,7 +99,7 @@ if __name__ == "__main__":
                               do_preprocess=args.do_preprocess,)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_bs, shuffle=True, num_workers=args.num_workers,
                                   pin_memory=True)
-    # TODO: add validataion set
+
     val_dataset = CRDataset(dataset=dataset,
                             selected_rois=val_rois,
                             main_sensor=main_sensor,
@@ -262,6 +266,7 @@ if __name__ == "__main__":
                 outputs = torch.cat(outputs, dim=0).permute(0, 2, 1, 3, 4)
                 targets = torch.cat(targets, dim=0).permute(0, 2, 1, 3, 4)
                 loss_masks = torch.cat(loss_masks, dim=0).permute(0, 2, 1, 3, 4)
+                timestamps = torch.cat(timestamps, dim=0)
                 metrics = Metrics(outputs=outputs, targets=targets, masks=loss_masks).evaluate_aggregate()
 
                 logs = {"val_loss": total_loss/max_samples,

@@ -6,7 +6,7 @@ rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
 SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
 DATASET_PATH="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json"
-MODEL_NAME="diffcr"
+MODEL_NAME="leastcloudy"
 BATCH_SIZE=4
 NUM_WORKERS=4
 DEVICE="cuda:0"
@@ -23,15 +23,13 @@ TX=3
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_pretrain_wo_s1"
-UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/config_pretrain_evaluation_wo_s1.yaml"
-UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/leastcloudy/0531"
+# UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/config_pretrain_evaluation_wo_s1.yaml"
+# UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/diffcr/init_0529_pretrain"
-CHECKPOINT="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth"
-
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/diffcr/init_0529_pretrain_old"
-CHECKPOINT="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_old.pth"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_pretrain_w_s1"
+# UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/config_pretrain_evaluation_w_s1.yaml"
+# UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_w_s1.pth'
 
 # UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/results/2024-05-30_01-30_0529/config.yaml"
 # EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_allclear_band4_EP40"
@@ -57,6 +55,4 @@ echo "Running script"
   --target-mode $TARGET_MODE \
   --tx $TX \
   --cld-shdw-fpaths $CLD_SHDW_FPATHS \
-  --diff-checkpoint $CHECKPOINT \
   --unique-roi 1
-

@@ -278,8 +278,8 @@ class DAE(BaseModel):
     def preprocess(self, inputs):
         if self.eval_mode == "s2p":
             # Insert a dummy image (all cloud or no info) at the correct temporal position for each sensor of the target image to mimic s2p.
-            s2_toa_placeholder = torch.zeros(len(self.channels['s2_toa']), 1, *inputs["target"].shape[2:])
-            s1_placeholder = torch.zeros(len(self.channels['s1']), 1, *inputs["target"].shape[2:]) - 1
+            s2_toa_placeholder = torch.ones(len(self.channels['s2_toa']), 1, *inputs["target"].shape[2:])
+            s1_placeholder = torch.ones(len(self.channels['s1']), 1, *inputs["target"].shape[2:]) - 1
             target_placeholder = torch.cat([s2_toa_placeholder, s1_placeholder], dim=0).squeeze(1)
             s2p_input_images = []
             s2p_targets = []

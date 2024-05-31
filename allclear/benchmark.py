@@ -302,7 +302,7 @@ class BenchmarkEngine:
         lulc_metrics_all = {i: {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []} for i in range(9)}
 
 
-        for data_id, data in tqdm(enumerate(self.data_loader), desc="Running Benchmark"):
+        for data_id, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
             # if data_id == 10:
             #     print("Breaking after 10 batches")
@@ -358,7 +358,7 @@ class BenchmarkEngine:
         }
         print(final_lulc_metrics)
 
-        plot_lulc_metrics(strat_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
+        plot_lulc_metrics(final_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
         print(f"experiment_output_path: {self.args.experiment_output_path}")
         
         final_results = pd.DataFrame(final_results, index=[0])
@@ -400,7 +400,6 @@ def parse_arguments():
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
     parser.add_argument("--unique-roi", type=int, default=0, help="0 uses all metadata, 1 uses only unique ROI")
     
-
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
     uc_args.add_argument("--uc-root1", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 1 for UnCRtainTS")
@@ -421,15 +420,18 @@ def parse_arguments():
     dae_args.add_argument("--dae-checkpoint", type=str, default="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae/'model_test-run-3-loss2*10_0_9800.pt'", help="Checkpoint for DAE")
 
     dae_args = parser.add_argument_group("PMAA Arguments")
-    dae_args.add_argument("--pmaa-model", type=str, default="new", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
     dae_args.add_argument("--pmaa-checkpoint", type=str, default='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth', help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
 
     dae_args = parser.add_argument_group("DiffCR Arguments")
     dae_args.add_argument("--diff-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/DiffCR/pretrained/diffcr_new.pth", help="Specified PMAA trained on Sen12_MTC_new or Sen12_MTC_old")
 
-    # ctgan
     ctgan_args = parser.add_argument_group("CTGAN Arguments")
     ctgan_args.add_argument("--ctgan-gen-checkpoint", type=str, default="/share/hariharan/ck696/allclear/baselines/CTGAN/Pretrain/G_epoch97_PSNR21.259-002.pth", help="Generator checkpoint for CTGAN")
+
+    util_args = parser.add_argument_group("UTILISE Arguments")
+    util_args.add_argument("--utilise-config", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml", help="Config file for UTILISE")
+    util_args.add_argument("--utilise-checkpoint", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth", help="Checkpoint for UTILISE")
+    
     args = parser.parse_args()
     return args
 

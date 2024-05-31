@@ -1,13 +1,12 @@
 #!/bin/bash
+
 rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
 
 # Command: bash demos/run_benchmark_dae.sh
-
-
 SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
 DATASET_PATH="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json"
-MODEL_NAME="uncrtaints"
+MODEL_NAME="utilise"
 BATCH_SIZE=4
 NUM_WORKERS=4
 DEVICE="cuda:0"
@@ -20,23 +19,24 @@ AUX_DATA=("cld_shdw" "dw")
 TARGET_MODE="s2p"
 CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
 TX=3
-
+ 
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_no_s1"
-EXP_NAME="noSAR_1"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_pretrain_wo_s1"
+UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/config_pretrain_evaluation_wo_s1.yaml"
+UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_with_s1"
-# EXP_NAME="diagonal_1"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_pretrain_w_s1"
+# UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/config_pretrain_evaluation_w_s1.yaml"
+# UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_w_s1.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_repro"
-# EXP_NAME="allclear_0524"
+# UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/results/2024-05-30_01-30_0529/config.yaml"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_allclear_band4_EP40"
+# UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/results/2024-05-30_01-30_0529/checkpoints/Model_after_40_epochs.pth'
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/utilise/init_0529_allclear_band4_EP400"
+# UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/results/2024-05-29_16-26_0529/checkpoints/Model_after_400_epochs.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_allclear_EP20"
-# EXP_NAME="allclear_0529_20k_v2"
-
-#export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"
 /share/hariharan/ck696/env_bh/anaconda/envs/allclear/bin/python $SCRIPT_PATH \
   --dataset-fpath $DATASET_PATH \
@@ -55,7 +55,6 @@ echo "Running script"
   --target-mode $TARGET_MODE \
   --tx $TX \
   --cld-shdw-fpaths $CLD_SHDW_FPATHS \
-  --uc-weight-folder $WEIGHT_FOLDER \
-  --uc-exp-name $EXP_NAME \
-  --uc-s1 1 \
+  --utilise-config $UTILISE_CONFIG \
+  --utilise-checkpoint $UTILISE_CHP \
   --unique-roi 1

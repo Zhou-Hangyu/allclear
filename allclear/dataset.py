@@ -44,11 +44,11 @@ def square_cld_shdw(image_size=256):
     return square_cld_shdw
 
 
-def random_opacity():
+def random_opacity(opaque_prob=0.9):
     """Generate a random opacity value."""
-    if torch.rand(1).item() > 0.9:
+    if torch.rand(1).item() < opaque_prob:  # opaque
         return 1
-    else:
+    else:   # semi-transparent
         return torch.rand(1).item()
 
 
@@ -159,7 +159,7 @@ class CRDataset(Dataset):
     def sample_cld_shdw(self):
         """Randomly sample clouds from existing cloud masks in the dataset.
         cld_shdw_fpaths: list of file path to all cloud and shadow masks in the dataset,
-        where cloud in channel 1, shadow in channel 2."""
+        where cloud in channel 1, shadow in channel 2 (shape 2xHxW)."""
         while True:  # Retry until a valid cloud shadow mask is loaded
             idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
             cld_shdw_fpath = self.cld_shdw_fpaths[idx]
@@ -335,15 +335,26 @@ class CRDataset(Dataset):
             synthetic_clds_shdws = torch.zeros_like(inputs_cld_shdw, dtype=torch.float16)
             for i in range(inputs_cld_shdw.shape[0]):
                 # sampled_cld_shdw = erode_dilate_cld_shdw(self.sample_cld_shdw()) * random_opacity()
-                sampled_cld_shdw = self.sample_cld_shdw() * random_opacity()
-                squared_cld_shdw = square_cld_shdw() * random_opacity()
+                sampled_cld_shdw = self.sample_cld_shdw()
+                sampled_cld_shdw[0] *= random_opacity(opaque_prob=0.8)  # cld is set to be opaque with high probability
+                sampled_cld_shdw[1] *= random_opacity(opaque_prob=0)  # shdw is always semi-transparent bc it's not an occlusion
+                squared_cld_shdw = square_cld_shdw()
+                squared_cld_shdw[0] *= random_opacity(opaque_prob=0.8)
+                squared_cld_shdw[1] *= random_opacity(opaque_prob=0)
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
-                synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
+                synthetic_cld_shdw[1] *= torch.logical_not(synthetic_cld_shdw[0] > 0)  # no shdw on cld
                 synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
-                        1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
-                        1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+            # for augmentation v3
+            synthetic_shdws = synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            synthetic_shdws[synthetic_shdws == 0] = 1
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * synthetic_shdws
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+
+            # for augmentation v2
+            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
+            #             1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
+            #             1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
 
             # for augmentation v1
             # synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)

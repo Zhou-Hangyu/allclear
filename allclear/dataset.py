@@ -47,7 +47,10 @@ def square_cld_shdw(image_size=256):
 
 def random_opacity():
     """Generate a random opacity value."""
-    return torch.rand(1).item() * 0.5
+    if torch.rand(1).item() > 0.9:
+        return 1
+    else:
+        return torch.rand(1).item()
 
 
 def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max_diff=2):

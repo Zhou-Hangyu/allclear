@@ -87,9 +87,9 @@ class CRDataset(Dataset):
 
         Example:
         data = {
-            1: {"roi": "roi1234", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
-            2: {"roi": "roi5678", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
-            3: {"roi": "roi9101", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
+            1: {"roi": ("roi1234", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
+            2: {"roi": ("roi5678", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
+            3: {"roi": ("roi9101", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
         }
         dataset = CRDataset('dataset.json', ['roi1', 'roi2'], 3)
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
@@ -225,6 +225,7 @@ class CRDataset(Dataset):
     def __getitem__(self, idx):
         # with Profile() as prof:
         sample = self.dataset[str(idx)]
+        roi = sample["roi"][0]
         latlong = sample["roi"][1]
         inputs_cld_shdw = None
 
@@ -409,6 +410,7 @@ class CRDataset(Dataset):
                 "timestamps": torch.tensor(timestamps), # Shape: (T)
                 "target_timestamps": torch.tensor(target_timestamps),
                 "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
+                "roi": roi,
                 "latlong": latlong,
             }
             item_dict = {k: v for k, v in item_dict.items() if v is not None}

@@ -196,19 +196,19 @@ class LeastCloudy(BaseModel):
         # No specific model configuration required for least cloudy as it's not a learning-based method
         return None
 
+    def preprocess(self, inputs):
+        inputs["input_images"] = inputs["input_images"].permute(0,2,1,3,4).to(self.device)
+        inputs["target"] = inputs["target"].permute(0,2,1,3,4).to(self.device)
+        inputs["masks"] = inputs["input_cld_shdw"].permute(0,2,1,3,4).to(self.device)
+        return inputs
+
     def forward(self, inputs):
-        input_imgs = inputs["images"]
-        masks = inputs["masks"]
-
-        # Determine the least cloudy image by summing up the cloud masks for each time point
-        cloudiness = masks.sum(dim=(2, 3))  # Sum over height and width
+        input_imgs = inputs["input_images"]
+        cloudiness = inputs["masks"].sum(dim=(2, 3, 4))  # Sum over height and width
         least_cloudy_index = cloudiness.argmin(dim=1)
-
-        # Select the least cloudy image for each example in the batch
         batch_indices = torch.arange(input_imgs.shape[0])
-        least_cloudy_img = input_imgs[batch_indices, least_cloudy_index]
-
-        return least_cloudy_img
+        least_cloudy_img = input_imgs[batch_indices, least_cloudy_index, :13].unsqueeze(1)
+        return {"output": least_cloudy_img}
 
 
 class Mosaicing(BaseModel):

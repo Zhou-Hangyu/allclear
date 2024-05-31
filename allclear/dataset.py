@@ -336,11 +336,13 @@ class CRDataset(Dataset):
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
                 synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
                 synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
             synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
-            synthetic_inputs_main_sensor = torch.clip(synthetic_inputs_main_sensor, 0, 1)
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+            
+
             # synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
             # synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            synthetic_inputs_main_sensor = torch.clip(synthetic_inputs_main_sensor, 0, 1)
             inputs['target'] = inputs[self.main_sensor]
             inputs[self.main_sensor] = [(timestamp, syncld_main_sensor) for timestamp, syncld_main_sensor in
                                         zip(timestamps_main_sensor, synthetic_inputs_main_sensor)]

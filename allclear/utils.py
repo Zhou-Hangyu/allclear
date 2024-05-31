@@ -44,6 +44,7 @@ def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
 
     # Ensure the order of metrics is consistent across subplots
     metric_order = ['MAE', 'RMSE', 'PSNR', 'SAM', 'SSIM']
+    vmax = [0.1, 0.1, 40, 15, 1]
 
     # Collect data for each metric to plot
     class_indices = sorted(metrics_data.keys())
@@ -56,6 +57,7 @@ def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
         ax.set_ylabel('Score')
         ax.set_xticks(class_indices)
         ax.grid(True)
+        ax.set_ylim(0, vmax[metric_order.index(metric)])
 
     plt.tight_layout()
     if save_dir:

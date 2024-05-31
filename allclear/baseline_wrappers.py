@@ -62,7 +62,7 @@ class UnCRtainTS(BaseModel):
         # to_date = lambda string: datetime.strptime(string, "%Y-%m-%d")
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
         self.S1_LAUNCH = to_date("2014-04-03")
-        self.S2_BANDS = 13
+        
 
         self.config = self.get_config()  # bug
         self.model = get_model(self.config).to(self.device)
@@ -70,6 +70,13 @@ class UnCRtainTS(BaseModel):
         ckpt_n = f"_epoch_{self.config.resume_at}" if self.config.resume_at > 0 else ""
         load_checkpoint(self.config, self.config.weight_folder, self.model, f"model{ckpt_n}")
         self.model.eval()
+
+        if "noSAR_1" in self.args.experiment_name:
+            self.num_input_dims = 13
+        else:
+            self.num_input_dims = 15
+        self.S2_BANDS = 13
+
 
     def get_model_config(self):
         pass
@@ -121,7 +128,7 @@ class UnCRtainTS(BaseModel):
         inputs["input_images"] = inputs["input_images"].to(self.device)
         inputs["target"] = inputs["target"].to(self.device)
         inputs["input_cld_shdw"] = inputs["input_cld_shdw"].to(self.device)
-        inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)
+        inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)[:,:,:self.num_input_dims]
         inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
 
@@ -144,6 +151,9 @@ class UnCRtainTS(BaseModel):
         # capture_dates = inputs["timestamps"]
         # dates = capture_dates - self.S1_LAUNCH        
         dates = inputs["time_differences"]
+
+        print("input_images", input_imgs.shape)
+        print("target", target_imgs.shape)
 
         model_inputs = {"A": input_imgs, "B": target_imgs, "dates": dates, "masks": masks}
 
@@ -436,25 +446,41 @@ class UTILISE(BaseModel):
 
         if "ck696" in os.getcwd():
             sys.path.append("/share/hariharan/ck696/allclear/baselines/U-TILISE")
-            config_file_train = "/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml"
-            checkpoint = '/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
         else:
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
-            config_file_train = "/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml"
-            checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
         
-        from lib.eval_tools import Imputation
-        utilise = Imputation(config_file_train, method='utilise', checkpoint=checkpoint)
+
+        print(f"====== UTILISE ======")
+        print(f"checkpoint: {args.utilise_checkpoint}")
+        print(f"export_path: {args.experiment_output_path}")
+        from lib.eval_tools_benchmarking import Imputation
+
+        if "band4" in args.experiment_output_path:
+            self.num_channels = 4
+        elif "w_s1" in args.experiment_output_path:
+            self.num_channels = 15
+        elif "wo_s1" in args.experiment_output_path:
+            self.num_channels = 13
+        else:
+            raise ValueError("Invalid experiment_output_path")
+
+        print(f"Using {self.num_channels} bands for UTILISE")
+        utilise = Imputation(args.utilise_config, 
+                             method='utilise', 
+                             checkpoint=args.utilise_checkpoint,
+                             num_channels=self.num_channels,
+                             )
         self.model = utilise.model.to(self.device)
         self.model.eval()
         print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
+
 
     def get_model_config(self):
         pass
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)
+        inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)[:,:,:self.num_channels].contiguous().to(self.device)
+        inputs["target"] = inputs["target"][:,:self.num_channels].to(self.device).permute(0,2,1,3,4)
         return inputs
 
     def forward(self, inputs):
@@ -477,29 +503,16 @@ class PMAA(BaseModel):
 
         if "ck696" in os.getcwd():
             sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA/model")
-        #     if args.pmaa_model == "new":
-        #         checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
-        #     elif args.pmaa_model == "old":
-        #         checkpoint = '/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
-        #     else:
-        #         raise ValueError("Invalid model type")
         else:
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA/model")
-        #     if args.pmaa_model == "new":
-        #         checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
-        #     elif args.pmaa_model == "old":
-        #         checkpoint = '/share/hariharan/cloud_removal/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
-        #     else:
-        #         raise ValueError("Invalid model type")
         
         checkpoint = args.pmaa_checkpoint
             
         print(f"====== PMAA ======")
-        print(f"Using PMAA model: {args.pmaa_model}")
         print(f"Using PMAA checkpoint: {checkpoint}")
 
         from pmaa import PMAA
-        self.model = PMAA(32, 4)
+        self.model = PMAA(32, 4) if "pmaa_old" not in checkpoint else PMAA(32, 3)
         def replace_batchnorm(model):
             for name, child in model.named_children():
                 if isinstance(child, torch.nn.BatchNorm2d):
@@ -513,14 +526,30 @@ class PMAA(BaseModel):
         self.model = self.model.to(self.device)
         self.model.eval()
 
-        self.bands = (1,2,3,7)
+        # self.bands = (3,2,1,7) if "pmaa_old" not in checkpoint else (3,2,1)
+        # self.input_bands = (1,2,3,7)
+        # self.output_bands = (1,2,3,7) if "pmaa_old" not in checkpoint else (1,2,3)
+
+        self.input_bands = (3,2,1,7)
+        self.output_bands = (3,2,1,7) if "pmaa_old" not in checkpoint else (3,2,1)
+
+        print(f"Using PMAA input bands: {self.input_bands}")
+        print(f"Using PMAA output bands: {self.output_bands}")
 
     def get_model_config(self):
         pass
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)[:,:,self.bands]
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:,:,self.bands]
+
+        # print("input_images", inputs["input_images"].shape)
+        # print("target", inputs["target"].shape)
+
+        inputs["input_images"] = inputs["input_images"][:,self.input_bands].permute(0,2,1,3,4).to(self.device)
+        inputs["target"] = inputs["target"][:,self.output_bands].permute(0,2,1,3,4).to(self.device)
+
+        # print("input_images", inputs["input_images"].shape)
+        # print("target", inputs["target"].shape)
+        # print(inputs.keys())
         return inputs
 
     def forward(self, inputs):
@@ -534,11 +563,10 @@ class PMAA(BaseModel):
         # Model I/O (bs, t, c, h, w)
         x = inputs["input_images"] * 2 - 1
         output, _, _ = self.model(x)
+        # print("output", output.shape)
         output = output.unsqueeze(1) * 0.5 + 0.5
+        # print("output", output.shape)
         return {"output": output}
-    
-
-
 
 class DiffCR(BaseModel):
     def __init__(self, args):
@@ -647,8 +675,8 @@ class DiffCR(BaseModel):
         pass
 
     def preprocess(self, inputs):
-        inputs["input_images"] = torch.clip(inputs["input_images"]/10000, 0, 1).to(self.device)[:,:,self.bands]
-        inputs["target"] = torch.clip(inputs["target"]/10000, 0, 1).to(self.device)[:,:,self.bands]
+        inputs["input_images"] = inputs["input_images"].to(self.device).permute(0,2,1,3,4)[:,:,self.bands]
+        inputs["target"] = inputs["target"].to(self.device).permute(0,2,1,3,4)[:,:,self.bands]
         return inputs
 
     def forward(self, inputs):

@@ -2,12 +2,10 @@
 rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
 
 # Command: bash demos/run_benchmark_dae.sh
-
-
 SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
 DATASET_PATH="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json"
-MODEL_NAME="uncrtaints"
+MODEL_NAME="pmaa"
 BATCH_SIZE=4
 NUM_WORKERS=4
 DEVICE="cuda:0"
@@ -20,23 +18,22 @@ AUX_DATA=("cld_shdw" "dw")
 TARGET_MODE="s2p"
 CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
 TX=3
-
+ 
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_no_s1"
-EXP_NAME="noSAR_1"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/pmaa/init_0529_pretrain_old"
+# PMAA_CHP='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_old.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_with_s1"
-# EXP_NAME="diagonal_1"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/pmaa/init_0529_pretrain_new"
+# PMAA_CHP='/share/hariharan/ck696/allclear/baselines/PMAA/pretrained/pmaa_new.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_repro"
-# EXP_NAME="allclear_0524"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/pmaa/init_0529_allclear_epoch47"
+# PMAA_CHP='/share/hariharan/ck696/allclear/baselines/PMAA/checkpoints_0529/PMAA_AllClear_lm100_la50_bs4_lr0.0005_0529_20K_AddCldMask/EP47_G_best_SSIM_0.386_PNSR_12.838.pth'
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_allclear_EP20"
-# EXP_NAME="allclear_0529_20k_v2"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/pmaa/init_0529_allclear_epoch25"
+PMAA_CHP='/share/hariharan/ck696/allclear/baselines/PMAA/checkpoints_0529/PMAA_AllClear_lm100_la50_bs4_lr0.0005_0529_20K_AddCldMask/EP26_G_best_SSIM_0.359_PNSR_12.775.pth'
 
-#export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"
 /share/hariharan/ck696/env_bh/anaconda/envs/allclear/bin/python $SCRIPT_PATH \
   --dataset-fpath $DATASET_PATH \
@@ -55,7 +52,5 @@ echo "Running script"
   --target-mode $TARGET_MODE \
   --tx $TX \
   --cld-shdw-fpaths $CLD_SHDW_FPATHS \
-  --uc-weight-folder $WEIGHT_FOLDER \
-  --uc-exp-name $EXP_NAME \
-  --uc-s1 1 \
+  --pmaa-checkpoint $PMAA_CHP \
   --unique-roi 1

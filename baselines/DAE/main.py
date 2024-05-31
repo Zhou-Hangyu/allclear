@@ -215,9 +215,9 @@ if __name__ == "__main__":
             global_step += 1
             args.global_step = global_step
 
-            if accelerator.is_main_process and bid % 1 == 0 and bid > 0:
+            if accelerator.is_main_process and bid % 1000 == 0 and bid > 0:
                 # save checkpoint
-                PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}_{bid}.pt")
+                PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}_{bid}.pt")
                 accelerator.save(model.state_dict(), PATH)
                 model.eval()
                 total_loss1 = 0
@@ -242,7 +242,7 @@ if __name__ == "__main__":
                     loss_masks.append(loss_mask)
                     geolocations.append(data['latlong'])
                     timestamps.append(data['timestamps'])
-                    roi_ids.append(data['roi'])
+                    roi_ids.extend(data['roi'])
                     targets.append(data['target'][:, :args.out_channel])
                     inputs.append(data['input_images'])
                     with torch.no_grad():
@@ -267,6 +267,9 @@ if __name__ == "__main__":
                 targets = torch.cat(targets, dim=0).permute(0, 2, 1, 3, 4)
                 loss_masks = torch.cat(loss_masks, dim=0).permute(0, 2, 1, 3, 4)
                 timestamps = torch.cat(timestamps, dim=0)
+                lats = torch.cat([x[0] for x in geolocations], dim=0)
+                lons = torch.cat([x[1] for x in geolocations], dim=0)
+                geolocations = torch.stack([lats, lons], dim=1)
                 metrics = Metrics(outputs=outputs, targets=targets, masks=loss_masks).evaluate_aggregate()
 
                 logs = {"val_loss": total_loss/max_samples,
@@ -291,6 +294,6 @@ if __name__ == "__main__":
         if accelerator.is_main_process:
 
             if args.epoch % 1 == 0:
-                PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}.pt")
+                PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
     accelerator.end_training()

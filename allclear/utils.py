@@ -5,7 +5,10 @@ import os
 import matplotlib
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
+from datetime import datetime
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
 
 def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
     """
@@ -290,6 +293,8 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
     - targets: (B, T, C, H, W)
     - loss_masks: (B, T, 1, H, W)
     - timestamps: (B, T)
+    - geolocations: (B, 2)
+    - roi_ids: (B)
     """
     sensors = data["sensors"]
     inputs = data["inputs"].cpu()
@@ -297,7 +302,7 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
     targets = data["targets"].cpu()
     loss_masks = data["loss_masks"].cpu()
     timestamps = data["timestamps"].cpu()
-    geolocations = data["geolocations"]
+    geolocations = data["geolocations"].cpu()
     roi_ids = data["rois"]
 
     channels = {
@@ -312,9 +317,9 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
         nrows = 3 + len(sensors)
         ncols = timestamps.shape[1]
         fig, axs = plt.subplots(nrows, ncols, figsize=(ncols * 2, nrows * 2))
-        fig.suptitle(f"ROI: {roi_ids[bid]}  Geolocation: ({str(geolocations[bid][0]), str(geolocations[bid][1])}", size=14)
+        fig.suptitle(f"ROI: {roi_ids[bid]}  Geolocation: ({geolocations[bid, 0].item():.3f}, {geolocations[bid, 1].item():.3f})", size=14)
         for fid, timestamp in enumerate(timestamps[bid]):
-            axs[0, fid].set_title(f"Day {timestamps[bid, fid]}", size=14)
+            axs[0, fid].set_title(f"{datetime.fromtimestamp(timestamps[bid, fid].item()).strftime('%Y-%m-%d')}", size=14)
             loss_mask = preprocess(loss_masks[bid, fid, 0].unsqueeze(0), "loss_mask", max_value)
             axs[0, fid].imshow(loss_mask, cmap="gray")
             if fid == 0: axs[0, fid].set_ylabel(f"Loss Masks", size=14)
@@ -340,6 +345,7 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
         if show_fig:
             plt.show()
         if save_fig:
+            os.makedirs(os.path.join(args.output_dir, args.runname, "vis"), exist_ok=True)
             plt.savefig(
-                os.path.join(args.output_dir, args.run_name, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmax{str(max_value)}.png"))
+                os.path.join(args.output_dir, args.runname, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmax{str(max_value)}.png"))
         plt.close()

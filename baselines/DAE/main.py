@@ -217,6 +217,7 @@ if __name__ == "__main__":
 
             if accelerator.is_main_process and bid % 1000 == 0 and bid > 0:
                 # save checkpoint
+                os.makedirs(os.path.join(args.output_dir, args.runname, "checkpoints"), exist_ok=True)
                 PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}_{bid}.pt")
                 accelerator.save(model.state_dict(), PATH)
                 model.eval()
@@ -282,8 +283,9 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
-                vis_data = {"sensors": sensors, "timestamps": timestamps, "geolocations": geolocations, "rois": roi_ids,
-                            "outputs": outputs, "targets": targets, "loss_masks": loss_masks, "inputs": inputs}
+                vis_num = 5
+                vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
+                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num]}
                 visualize_batch(vis_data, max_value=1, args=args)
                 visualize_batch(vis_data, max_value=0.3, args=args)
                 visualize_batch(vis_data, max_value=0.1, args=args)
@@ -294,6 +296,7 @@ if __name__ == "__main__":
         if accelerator.is_main_process:
 
             if args.epoch % 1 == 0:
+                os.makedirs(os.path.join(args.output_dir, args.runname, "checkpoints"), exist_ok=True)
                 PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
     accelerator.end_training()

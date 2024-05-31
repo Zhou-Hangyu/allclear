@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tqdm import tqdm
 import sys, os, json
+import pandas as pd
 
 if "ck696" in os.getcwd():
     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
@@ -46,7 +47,7 @@ class Metrics:
             self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
         self.batch_size = batch_size
 
-        print(f"Evaluating Masked Metrics using {self.device}...")
+        # print(f"Evaluating Masked Metrics using {self.device}...")
         self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.batch_process(self.masks)
 
     def evaluate_aggregate(self):
@@ -83,7 +84,7 @@ class Metrics:
         maes, rmses, psnrs, sams, ssims = [], [], [], [], []
 
 
-        for i in tqdm(range(num_batches), desc="Processing batches"):
+        for i in range(num_batches):
             start = i * self.batch_size
             end = min((i + 1) * self.batch_size, self.outputs.shape[0])
             batch_outputs = self.outputs[start:end].to(self.device)
@@ -283,6 +284,50 @@ class BenchmarkEngine:
         )
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
 
+    # def run(self):
+    #     print("Running Benchmark...")
+    #     outputs_all = []
+    #     targets_all = []
+    #     target_non_cld_shdw_masks_all = []
+    #     target_lulc_maps = []
+
+    #     print(f"len of data_loader: {len(self.data_loader)}")
+    #     for data in tqdm(self.data_loader, desc="Running Benchmark"):
+    #         with torch.no_grad():
+    #             data = self.model.preprocess(data)
+    #             targets_all.append(data["target"].cpu())
+    #             target_cld_shdw_mask = (data["target_cld_shdw"][:,0,...] + data["target_cld_shdw"][:,1,...]) > 0
+    #             target_non_cld_shdw_mask = torch.logical_not(target_cld_shdw_mask).cpu()
+    #             target_non_cld_shdw_masks_all.append(target_non_cld_shdw_mask)
+    #             target_lulc_maps.append(data["target_dw"].cpu())
+    #             outputs = self.model.forward(data)
+    #             outputs_all.append(outputs["output"].cpu())
+    #             # save results
+    #             # for i in range(self.args.batch_size):
+    #             #     # save results in tif format
+    #             #     self.save_results(outputs[i], targets[i], data["timestamps"][i], self.args.res_dir)
+    #             # print(outputs[0].shape)
+    #         if self.args.save_plots:
+    #             for i in range(self.args.batch_size):
+    #                 # save_rgb_side_by_side(outputs[0][i].squeeze(0), targets[i], data["timestamps"][i], self.args.experiment_output_path)
+    #                 # print(outputs[0].squeeze(0).shape)
+    #                 # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
+    #                 continue
+
+    #     outputs = torch.cat(outputs_all, dim=0)
+    #     targets = torch.cat(targets_all, dim=0)
+    #     masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
+    #     lulc_maps = torch.cat(target_lulc_maps, dim=0)
+    #     metrics = Metrics(outputs, targets, masks, device=self.device, lulc_maps=lulc_maps)
+    #     results = metrics.evaluate_aggregate()
+    #     print(results)
+
+    #     strat_lulc = metrics.evaluate_strat_lulc(mode="map")
+    #     plot_lulc_metrics(strat_lulc, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
+
+    #     self.cleanup()
+    #     return outputs, targets, masks, lulc_maps
+
     def run(self):
         print("Running Benchmark...")
         outputs_all = []
@@ -290,8 +335,23 @@ class BenchmarkEngine:
         target_non_cld_shdw_masks_all = []
         target_lulc_maps = []
 
-        print(f"len of data_loader: {len(self.data_loader)}")
-        for data in tqdm(self.data_loader, desc="Running Benchmark"):
+        per_batch_metrics = {
+            "MAE": [],
+            "RMSE": [],
+            "PSNR": [],
+            "SAM": [],
+            "SSIM": []
+        }
+
+        lulc_metrics_all = {i: {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []} for i in range(9)}
+
+
+        for data_id, data in tqdm(enumerate(self.data_loader), desc="Running Benchmark"):
+
+            if data_id == 10:
+                print("Breaking after 10 batches")
+                break
+
             with torch.no_grad():
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
@@ -301,31 +361,57 @@ class BenchmarkEngine:
                 target_lulc_maps.append(data["target_dw"].cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
-                # save results
-                # for i in range(self.args.batch_size):
-                #     # save results in tif format
-                #     self.save_results(outputs[i], targets[i], data["timestamps"][i], self.args.res_dir)
-                # print(outputs[0].shape)
+
             if self.args.save_plots:
                 for i in range(self.args.batch_size):
-                    # save_rgb_side_by_side(outputs[0][i].squeeze(0), targets[i], data["timestamps"][i], self.args.experiment_output_path)
-                    # print(outputs[0].squeeze(0).shape)
-                    # save_batch_visualization(data, outputs[0].squeeze(1).detach().cpu(), self.args.experiment_output_path, data["timestamps"][i], i)
                     continue
 
-        outputs = torch.cat(outputs_all, dim=0)
-        targets = torch.cat(targets_all, dim=0)
-        masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
-        lulc_maps = torch.cat(target_lulc_maps, dim=0)
-        metrics = Metrics(outputs, targets, masks, device=self.device, lulc_maps=lulc_maps)
-        results = metrics.evaluate_aggregate()
-        print(results)
+            # Compute metrics for the current batch
+            batch_outputs = torch.cat(outputs_all, dim=0)
+            batch_targets = torch.cat(targets_all, dim=0)
+            batch_masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
+            batch_lulc_maps = torch.cat(target_lulc_maps, dim=0)
+            
+            metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device, lulc_maps=batch_lulc_maps)
+            batch_results = metrics.evaluate_aggregate()
 
-        strat_lulc = metrics.evaluate_strat_lulc(mode="map")
-        plot_lulc_metrics(strat_lulc, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
+            # Store per-batch metrics
+            for key in per_batch_metrics:
+                per_batch_metrics[key].append(batch_results[key])
+            
+            # Store stratified metrics for each LULC class
+            strat_lulc_metrics = metrics.evaluate_strat_lulc(mode="map")
+            for lulc_class, class_metrics in strat_lulc_metrics.items():
+                for metric, value in class_metrics.items():
+                    lulc_metrics_all[lulc_class][metric].append(value)
+
+            # Clear lists for the next batch
+            outputs_all.clear()
+            targets_all.clear()
+            target_non_cld_shdw_masks_all.clear()
+            target_lulc_maps.clear()
+
+        # Compute final aggregate metrics
+        final_results = {key: torch.tensor(values).nanmean().item() for key, values in per_batch_metrics.items()}
+        print(final_results)
+
+        # Compute final stratified metrics for each LULC class
+        final_lulc_metrics = {
+            lulc_class: {metric: torch.tensor(values).nanmean().item() for metric, values in class_metrics.items()}
+            for lulc_class, class_metrics in lulc_metrics_all.items()
+        }
+        print(final_lulc_metrics)
+        plot_lulc_metrics(strat_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
+        print(f"experiment_output_path: {self.args.experiment_output_path}")
+        # save the final results and the final lulc metrics to csv or json files
+        
+        final_results = pd.DataFrame(final_results, index=[0])
+        final_results.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_results.csv", index=False)
+        final_lulc_metrics = pd.DataFrame(final_lulc_metrics)
+        final_lulc_metrics.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_lulc_metrics.csv", index=True)
 
         self.cleanup()
-        return outputs, targets, masks, lulc_maps
+        return final_results, final_lulc_metrics
 
     def cleanup(self):
         pass

@@ -5,7 +5,9 @@
 SCRIPT_PATH="baselines/DAE/main.py"
 #SCRIPT_PATH="experimental_scripts/SimpleUnet/main_v2.py"
 MODE="train"
-LR=1e-5
+#LR=1e-5
+#LR=2e-5
+LR=5e-5
 TRAIN_BATCH_SIZE=4
 NUM_EPOCHS=1
 MAX_DIM=512
@@ -21,7 +23,9 @@ TARGET_MODE="s2s"
 CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
 TX=3
 
-RUN_NAME="3dunet_loss12_src_ccccaa_lr1e-05_aug2"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr1e-05_aug2"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr2e-05_aug2"
+RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug2"
 DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx3_train_20k_v1.json"
 OUTPUT_DIR="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae"
 

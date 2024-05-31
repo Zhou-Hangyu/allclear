@@ -5,7 +5,9 @@
 MODE="s2s"
 #MODE="s2p"
 #TX=3
-TX=3
+#TX=6
+TX=9
+#TX=12
 MAIN_SENSOR="s2_toa"
 #MAIN_SENSOR_METADATA='/scratch/allclear/metadata/v3/s2_toa_dataset_500_metadata.csv'
 #MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v3/s2_toa_test_4k_metadata.csv'
@@ -13,8 +15,8 @@ MAIN_SENSOR="s2_toa"
 MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v3/s2_toa_train_20k_metadata.csv'
 AUX_SENSORS=(
 "s1"
-#"landsat8"
-#"landsat9"
+"landsat8"
+"landsat9"
 )
 AUX_SENSOR_METADATA=(
 #'/scratch/allclear/metadata/v3/s1_dataset_500_metadata.csv'

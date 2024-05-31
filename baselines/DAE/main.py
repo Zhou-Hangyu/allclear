@@ -60,6 +60,7 @@ def parse_arguments():
     parser.add_argument("--mode", type=str, default="test", help="train or test")
     parser.add_argument("--vis-freq", type=int, default=50, help="train or test")
     parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
+    parser.add_argument("--checkpoint", type=str, default=None, help="The checkpoint to load")
 
     # jupyter notebook artifact
     parser.add_argument("-f", type=str, default="", help="jupyter notebook artifact")
@@ -129,6 +130,10 @@ if __name__ == "__main__":
         up_block_types=up_block_list,  # the up block sequence
         norm_num_groups=args.norm_num_groups,  # the number of groups for normalization
     )
+    if args.checkpoint is not None:
+        params = torch.load(args.checkpoint, map_location=torch.device('cpu'))
+        filtered_params = {k: v for k, v in params.items() if "custom_pos_embed.position" not in k}
+        model.load_state_dict(filtered_params, strict=False)
 
     base_bs = 1
     base_lr = 0.00001

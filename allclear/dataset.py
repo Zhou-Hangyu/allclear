@@ -47,7 +47,10 @@ def square_cld_shdw(image_size=256):
 
 def random_opacity():
     """Generate a random opacity value."""
-    return torch.rand(1).item() * 0.5
+    if torch.rand(1).item() > 0.9:
+        return 1
+    else:
+        return torch.rand(1).item()
 
 
 def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max_diff=2):
@@ -87,9 +90,9 @@ class CRDataset(Dataset):
 
         Example:
         data = {
-            1: {"roi": "roi1234", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
-            2: {"roi": "roi5678", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
-            3: {"roi": "roi9101", "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
+            1: {"roi": ("roi1234", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value1"},
+            2: {"roi": ("roi5678", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
+            3: {"roi": ("roi9101", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
         }
         dataset = CRDataset('dataset.json', ['roi1', 'roi2'], 3)
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
@@ -225,6 +228,7 @@ class CRDataset(Dataset):
     def __getitem__(self, idx):
         # with Profile() as prof:
         sample = self.dataset[str(idx)]
+        roi = sample["roi"][0]
         latlong = sample["roi"][1]
         inputs_cld_shdw = None
 
@@ -332,8 +336,11 @@ class CRDataset(Dataset):
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
                 synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
                 synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
-            synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            synthetic_inputs_main_sensor = torch.clip(synthetic_inputs_main_sensor, 0, 1)
+            # synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+            # synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
             inputs['target'] = inputs[self.main_sensor]
             inputs[self.main_sensor] = [(timestamp, syncld_main_sensor) for timestamp, syncld_main_sensor in
                                         zip(timestamps_main_sensor, synthetic_inputs_main_sensor)]
@@ -409,6 +416,7 @@ class CRDataset(Dataset):
                 "timestamps": torch.tensor(timestamps), # Shape: (T)
                 "target_timestamps": torch.tensor(target_timestamps),
                 "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
+                "roi": roi,
                 "latlong": latlong,
             }
             item_dict = {k: v for k, v in item_dict.items() if v is not None}

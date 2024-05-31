@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from baselines.DAE.diffusers_src import UNet3DConditionModel
 
-from utils.visualize import visualization_v44
+from allclear import visualize_batch
 
 
 def parse_arguments():
@@ -32,7 +32,6 @@ def parse_arguments():
 
     parser.add_argument("--in-channel", type=int, default=15, help="number of input channel")
     parser.add_argument("--out-channel", type=int, default=13, help="number of output channel")
-    parser.add_argument("--tx", type=int, default=3, help="The number of frame")
 
     # cross_attention_dim
     parser.add_argument("--norm-num-groups", type=int, default=32, help="The number of group for normalization")
@@ -48,6 +47,12 @@ def parse_arguments():
     parser.add_argument("--output-dir", type=str,
                         default="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae",
                         help="The output directory")
+    parser.add_argument("--main-sensor", type=str, default="s2_toa", help="Main sensor for the dataset")
+    parser.add_argument("--aux-sensors", type=str, nargs="+", help="Auxiliary sensors for the dataset")
+    parser.add_argument("--aux-data", type=str, nargs="+",default=["cld_shdw", "dw"], help="Auxiliary data for the dataset")
+    parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
+    parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
+    parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
 
     # Reproducibility
     parser.add_argument("--seed", type=int, default=0, help="The random seed")
@@ -65,13 +70,12 @@ if __name__ == "__main__":
     args = parse_arguments()
     with open(args.dataset) as f:
         dataset = json.load(f)
-    selected_rois = "all"
-    main_sensor = "s2_toa"
-    aux_sensors = ["s1"]
-    aux_data = ["cld_shdw"]
-    tx = 3
-    # target_mode = "s2p"
-    target_mode = "s2s"
+    main_sensor = args.main_sensor
+    aux_sensors = args.aux_sensors
+    aux_data = args.aux_data
+    tx = args.tx
+    target_mode = args.target_mode
+
     with open("/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json") as f:
         cld_shdw_fpaths = json.load(f)
 
@@ -81,7 +85,7 @@ if __name__ == "__main__":
     with open("/share/hariharan/cloud_removal/metadata/v3/val_rois_20k.txt") as f:
         val_rois = f.read().splitlines()
 
-    runname = f"{args.runname}_{args.model_type}_{args.model_blocks}_{args.lr}_{args.norm_num_groups}_{args.max_d0}_{args.max_dim}_{args.postfix}"
+    runname = f"{args.runname}"
 
     # Set up the data
     train_dataset = CRDataset(dataset=dataset,
@@ -95,7 +99,7 @@ if __name__ == "__main__":
                               do_preprocess=args.do_preprocess,)
     train_dataloader = DataLoader(train_dataset, batch_size=args.train_bs, shuffle=True, num_workers=args.num_workers,
                                   pin_memory=True)
-    # TODO: add validataion set
+
     val_dataset = CRDataset(dataset=dataset,
                             selected_rois=val_rois,
                             main_sensor=main_sensor,
@@ -195,9 +199,9 @@ if __name__ == "__main__":
             with accelerator.accumulate(model):
                 pred = model(data['input_images'], 1, encoder_hidden_states=emb, return_dict=False)[0]
                 loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel], reduction="none") * loss_mask).mean() * 3
-                pred = torch.clip(pred, -1, -0.6) / 0.4
-                clean_imgs_ = torch.clip(data['target'], -1, -0.6) / 0.4
-                loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean() * 10
+                pred = torch.clip(pred, 0, 0.5) / 0.5
+                clean_imgs_ = torch.clip(data['target'], 0, 0.5) / 0.5
+                loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean()
                 loss = loss1 + loss2
                 accelerator.backward(loss)
                 optimizer.step()
@@ -209,10 +213,12 @@ if __name__ == "__main__":
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
+            args.global_step = global_step
 
-            if accelerator.is_main_process and bid % 1 == 0 and bid > 0:
+            if accelerator.is_main_process and bid % 1000 == 0 and bid > 0:
                 # save checkpoint
-                PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}_{bid}.pt")
+                os.makedirs(os.path.join(args.output_dir, args.runname, "checkpoints"), exist_ok=True)
+                PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}_{bid}.pt")
                 accelerator.save(model.state_dict(), PATH)
                 model.eval()
                 total_loss1 = 0
@@ -220,40 +226,52 @@ if __name__ == "__main__":
                 total_loss = 0
                 num_samples = 0
                 max_samples = 10
+                inputs = []
                 outputs = []
                 targets = []
-                masks = []
+                loss_masks = []
+                sensors = [args.main_sensor] + args.aux_sensors
+                timestamps = []
+                geolocations = []
+                roi_ids = []
+
 
                 # eval on 10 samples from the validation set
                 for bid, data in enumerate(val_dataloader):
                     update_model_position_token(model, data["time_differences"])
                     loss_mask = torch.logical_not((data['target_cld_shdw'][:, 0, ...] + data['target_cld_shdw'][:, 1, ...]) > 0).unsqueeze(1)
-                    masks.append(loss_mask)
+                    loss_masks.append(loss_mask)
+                    geolocations.append(data['latlong'])
+                    timestamps.append(data['timestamps'])
+                    roi_ids.extend(data['roi'])
                     targets.append(data['target'][:, :args.out_channel])
+                    inputs.append(data['input_images'])
                     with torch.no_grad():
                         pred = model(data['input_images'], 1, encoder_hidden_states=emb, return_dict=False)[0]
                         outputs.append(pred)
-                        loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel], reduction="none") * loss_mask).mean() * 3
-                        pred = torch.clip(pred, -1, -0.6) / 0.4
-                        clean_imgs_ = torch.clip(data['target'], -1, -0.6) / 0.4
-                        loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean() * 10
+                        loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel],
+                                            reduction="none") * loss_mask).mean() * 3
+                        pred = torch.clip(pred, 0, 0.5) / 0.5
+                        clean_imgs_ = torch.clip(data['target'], 0, 0.5) / 0.5
+                        loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel],
+                                            reduction="none") * loss_mask).mean()
                         loss = loss1 + loss2
                         total_loss1 += loss1.item()
                         total_loss2 += loss2.item()
                         total_loss += loss.item()
                         num_samples += 1
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred, data['time_differences'], scale=0.2, auto=False)
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
-                                      data['time_differences'], scale=0.3, auto=False)
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
-                                      data['time_differences'], scale=1.0, auto=False)
                     if num_samples == max_samples:
                         break
 
+                inputs = torch.cat(inputs, dim=0).permute(0, 2, 1, 3, 4)
                 outputs = torch.cat(outputs, dim=0).permute(0, 2, 1, 3, 4)
                 targets = torch.cat(targets, dim=0).permute(0, 2, 1, 3, 4)
-                masks = torch.cat(masks, dim=0).permute(0, 2, 1, 3, 4)
-                metrics = Metrics(outputs=outputs, targets=targets, masks=masks).evaluate_aggregate()
+                loss_masks = torch.cat(loss_masks, dim=0).permute(0, 2, 1, 3, 4)
+                timestamps = torch.cat(timestamps, dim=0)
+                lats = torch.cat([x[0] for x in geolocations], dim=0)
+                lons = torch.cat([x[1] for x in geolocations], dim=0)
+                geolocations = torch.stack([lats, lons], dim=1)
+                metrics = Metrics(outputs=outputs, targets=targets, masks=loss_masks).evaluate_aggregate()
 
                 logs = {"val_loss": total_loss/max_samples,
                         "val_loss1": total_loss1/max_samples,
@@ -265,38 +283,20 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
+                vis_num = 5
+                vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
+                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num]}
+                visualize_batch(vis_data, max_value=1, args=args)
+                visualize_batch(vis_data, max_value=0.3, args=args)
+                visualize_batch(vis_data, max_value=0.1, args=args)
+
                 model.train()
-
-                # # TODO: cross validation (5% hold out)
-
-
-                    #         raw_data = raw_data.to(args.device)
-                    #         args.time_span = raw_data.size(2)
-                    #         cloud_mask = cloud_process(raw_data[:, 16:18].sum(dim=1, keepdim=False) >= 1)
-                    #         loss_mask = 1 - cloud_mask.unsqueeze(1)
-                    #         clean_imgs = raw_data[:, :15]
-                    #         noisy_imgs = noisy_process(raw_data)[:, :15]
-                    #         clean_imgs_ = clean_imgs * 2 - 1
-                    #         noisy_imgs_ = noisy_imgs * 2 - 1
-                    #         update_model_position_token(model, daycounts - daycounts.min())
-                    #
-                    #         clean_pred = model(clean_imgs_, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-                    #         noisy_pred = model(noisy_imgs_, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=0.3,
-                    #                           auto=False)
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=0.2,
-                    #                           auto=False)
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=1.0,
-                    #                           auto=True)
-                    # pass
 
 
         if accelerator.is_main_process:
 
             if args.epoch % 1 == 0:
-                # Save the model checkpoint using torch save
-                PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}.pt")
+                os.makedirs(os.path.join(args.output_dir, args.runname, "checkpoints"), exist_ok=True)
+                PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
-                # PATH = os.path.join(args.output_dir, f"embed_{args.epoch}.pt")
-                # accelerator.save(meta_embedding.state_dict(), PATH)
     accelerator.end_training()

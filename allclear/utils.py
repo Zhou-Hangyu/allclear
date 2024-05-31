@@ -5,7 +5,10 @@ import os
 import matplotlib
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
+from datetime import datetime
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
 
 def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
     """
@@ -93,6 +96,18 @@ def load_image_center_crop(image, channels=None, center_crop=False, size=(256, 2
         data = data[:, offset_y:offset_y + size[1], offset_x:offset_x + size[0]]
     return data
 
+def normalize(array, clip=True, max_value=None, min_percentile=1, max_percentile=99):
+    '''
+    normalize: normalize a numpy array so all value are between 0 and 1
+    '''
+    if clip:
+        array = np.clip(array, 0, max_value)
+    array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
+    try:
+        normalized_array = (array - array_min) / (array_max - array_min)
+    except Exception as e:
+        normalized_array = array
+    return np.clip(normalized_array, 0, 1)
 
 def visualize_one_image(
     msi=None,
@@ -164,17 +179,6 @@ def visualize_one_image(
     such as region of interest (ROI), latitude, longitude, date, and satellite information. The function also supports
     center cropping to focus on a specific part of the image and saves the visualization if a save directory is provided.
     """
-
-    def normalize(array, clip=True, max_value=None, min_percentile=1, max_percentile=99):
-        '''
-        normalize: normalize a numpy array so all value are between 0 and 1
-        '''
-        if clip:
-            array = np.clip(array, 0, max_value)
-        array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
-        normalized_array = (array - array_min) / (array_max - array_min)
-#         print(array_min, array_max, normalized_array.min(), normalized_array.max())
-        return np.clip(normalized_array, 0, 1) / 1
 
     plt.figure(figsize=(12, 12), dpi=dpi)
 
@@ -254,3 +258,94 @@ def visualize_one_image(
         plt.savefig(save_path, bbox_inches="tight", dpi=200)
 
     plt.show()
+
+
+def preprocess(img, sensor, max_value):
+    """
+    Reshape img from (C, H, W) to (H, W, C) and scale the image, then return as numpy array.
+    """
+    img = img.permute(1, 2, 0).numpy()
+    if sensor == "s2_toa":
+        img = img[:, :, [3, 2, 1]]
+        img = normalize(img, max_value=max_value, min_percentile=0, max_percentile=100)
+    elif sensor == "s1":
+        sar = np.zeros((img.shape[0], img.shape[1], 3))
+        sar[...,0] = normalize(img[...,0], clip=False, min_percentile=0, max_percentile=100)  # VV
+        sar[...,1] = normalize(img[...,1], clip=False, min_percentile=0, max_percentile=100)   # VH
+        sar[...,2] = normalize(img[...,1] - img[...,0], clip=False, min_percentile=0, max_percentile=100)  # VV - VH
+        img = sar
+    elif sensor == "loss_mask":
+        img = img
+    return img
+
+
+
+def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
+    """
+    Format:
+    columns: timestamps
+    rows: loss mask, targets, outputs, inputs (sensor1, sensor2, ...)
+
+    sensors: list of sensors in the order of the channels (e.g., ["s2_toa", "s1", "landsat8", "landsat9"])
+    Required data shape:
+    - inputs: (B, T, C, H, W)
+    - outputs: (B, T, C, H, W)
+    - targets: (B, T, C, H, W)
+    - loss_masks: (B, T, 1, H, W)
+    - timestamps: (B, T)
+    - geolocations: (B, 2)
+    - roi_ids: (B)
+    """
+    sensors = data["sensors"]
+    inputs = data["inputs"].cpu()
+    outputs = data["outputs"].cpu()
+    targets = data["targets"].cpu()
+    loss_masks = data["loss_masks"].cpu()
+    timestamps = data["timestamps"].cpu()
+    geolocations = data["geolocations"].cpu()
+    roi_ids = data["rois"]
+
+    channels = {
+        "s2_toa": list(range(13)),
+        "s1": list(range(2)),
+        "landsat8": list(range(11)),
+        "landsat9": list(range(11)),
+    }
+
+    for bid in range(inputs.size(0)):
+
+        nrows = 3 + len(sensors)
+        ncols = timestamps.shape[1]
+        fig, axs = plt.subplots(nrows, ncols, figsize=(ncols * 2, nrows * 2))
+        fig.suptitle(f"ROI: {roi_ids[bid]}  Geolocation: ({geolocations[bid, 0].item():.3f}, {geolocations[bid, 1].item():.3f})", size=14)
+        for fid, timestamp in enumerate(timestamps[bid]):
+            axs[0, fid].set_title(f"{datetime.fromtimestamp(timestamps[bid, fid].item()).strftime('%Y-%m-%d')}", size=14)
+            loss_mask = preprocess(loss_masks[bid, fid, 0].unsqueeze(0), "loss_mask", max_value)
+            axs[0, fid].imshow(loss_mask, cmap="gray")
+            if fid == 0: axs[0, fid].set_ylabel(f"Loss Masks", size=14)
+            target = preprocess(targets[bid, fid, channels[sensors[0]]], sensors[0], max_value)
+            axs[1, fid].imshow(target)
+            if fid == 0: axs[1, fid].set_ylabel(f"Targets ({sensors[0]})", size=14)
+            output = preprocess(outputs[bid, fid, channels[sensors[0]]], sensors[0], max_value)
+            axs[2, fid].imshow(output)
+            if fid == 0: axs[2, fid].set_ylabel(f"Outputs ({sensors[0]})", size=14)
+            start_channel = 0
+            for sid, sensor in enumerate(sensors):
+                sensor_channels = [channel + start_channel for channel in channels[sensor]]
+                input = preprocess(inputs[bid, fid, sensor_channels], sensor, max_value)
+                axs[sid + 3, fid].imshow(input)
+                if fid == 0: axs[sid + 3, fid].set_ylabel(f"Inputs ({sensor})", size=14)
+                start_channel += len(channels[sensor])
+
+        for ax in axs.flatten():
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        fig.tight_layout()
+        if show_fig:
+            plt.show()
+        if save_fig:
+            os.makedirs(os.path.join(args.output_dir, args.runname, "vis"), exist_ok=True)
+            plt.savefig(
+                os.path.join(args.output_dir, args.runname, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmax{str(max_value)}.png"))
+        plt.close()

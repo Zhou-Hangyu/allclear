@@ -341,5 +341,5 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
             plt.show()
         if save_fig:
             plt.savefig(
-                os.path.join(args.output_dir, args.run_name, "vis", f"EP{args.epoch}_S{args.global_step}_B{bid}_Vmax{max_value}.png"))
+                os.path.join(args.output_dir, args.run_name, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmax{str(max_value)}.png"))
         plt.close()

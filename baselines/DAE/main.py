@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from baselines.DAE.diffusers_src import UNet3DConditionModel
 
-from utils.visualize import visualization_v44
+from allclear import visualize_batch
 
 
 def parse_arguments():
@@ -195,9 +195,9 @@ if __name__ == "__main__":
             with accelerator.accumulate(model):
                 pred = model(data['input_images'], 1, encoder_hidden_states=emb, return_dict=False)[0]
                 loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel], reduction="none") * loss_mask).mean() * 3
-                pred = torch.clip(pred, -1, -0.6) / 0.4
-                clean_imgs_ = torch.clip(data['target'], -1, -0.6) / 0.4
-                loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean() * 10
+                pred = torch.clip(pred, 0, 0.5) / 0.5
+                clean_imgs_ = torch.clip(data['target'], 0, 0.5) / 0.5
+                loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean()
                 loss = loss1 + loss2
                 accelerator.backward(loss)
                 optimizer.step()
@@ -209,6 +209,7 @@ if __name__ == "__main__":
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
+            args.global_step = global_step
 
             if accelerator.is_main_process and bid % 1 == 0 and bid > 0:
                 # save checkpoint
@@ -220,40 +221,48 @@ if __name__ == "__main__":
                 total_loss = 0
                 num_samples = 0
                 max_samples = 10
+                inputs = []
                 outputs = []
                 targets = []
-                masks = []
+                loss_masks = []
+                sensors = [args.main_sensor] + args.aux_sensors
+                timestamps = []
+                geolocations = []
+                roi_ids = []
+
 
                 # eval on 10 samples from the validation set
                 for bid, data in enumerate(val_dataloader):
                     update_model_position_token(model, data["time_differences"])
                     loss_mask = torch.logical_not((data['target_cld_shdw'][:, 0, ...] + data['target_cld_shdw'][:, 1, ...]) > 0).unsqueeze(1)
-                    masks.append(loss_mask)
+                    loss_masks.append(loss_mask)
+                    geolocations.append(data['latlong'])
+                    timestamps.append(data['timestamps'])
+                    roi_ids.append(data['roi'])
                     targets.append(data['target'][:, :args.out_channel])
+                    inputs.append(data['input_images'])
                     with torch.no_grad():
                         pred = model(data['input_images'], 1, encoder_hidden_states=emb, return_dict=False)[0]
                         outputs.append(pred)
-                        loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel], reduction="none") * loss_mask).mean() * 3
-                        pred = torch.clip(pred, -1, -0.6) / 0.4
-                        clean_imgs_ = torch.clip(data['target'], -1, -0.6) / 0.4
-                        loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel], reduction="none") * loss_mask).mean() * 10
+                        loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel],
+                                            reduction="none") * loss_mask).mean() * 3
+                        pred = torch.clip(pred, 0, 0.5) / 0.5
+                        clean_imgs_ = torch.clip(data['target'], 0, 0.5) / 0.5
+                        loss2 = (F.mse_loss(pred, clean_imgs_[:, :args.out_channel],
+                                            reduction="none") * loss_mask).mean()
                         loss = loss1 + loss2
                         total_loss1 += loss1.item()
                         total_loss2 += loss2.item()
                         total_loss += loss.item()
                         num_samples += 1
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred, data['time_differences'], scale=0.2, auto=False)
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
-                                      data['time_differences'], scale=0.3, auto=False)
-                    visualization_v44(global_step, args, data['target'], pred, loss_mask, data['input_images'], pred,
-                                      data['time_differences'], scale=1.0, auto=False)
                     if num_samples == max_samples:
                         break
 
+                inputs = torch.cat(inputs, dim=0).permute(0, 2, 1, 3, 4)
                 outputs = torch.cat(outputs, dim=0).permute(0, 2, 1, 3, 4)
                 targets = torch.cat(targets, dim=0).permute(0, 2, 1, 3, 4)
-                masks = torch.cat(masks, dim=0).permute(0, 2, 1, 3, 4)
-                metrics = Metrics(outputs=outputs, targets=targets, masks=masks).evaluate_aggregate()
+                loss_masks = torch.cat(loss_masks, dim=0).permute(0, 2, 1, 3, 4)
+                metrics = Metrics(outputs=outputs, targets=targets, masks=loss_masks).evaluate_aggregate()
 
                 logs = {"val_loss": total_loss/max_samples,
                         "val_loss1": total_loss1/max_samples,
@@ -265,38 +274,18 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
+                vis_data = {"sensors": sensors, "timestamps": timestamps, "geolocations": geolocations, "rois": roi_ids,
+                            "outputs": outputs, "targets": targets, "loss_masks": loss_masks, "inputs": inputs}
+                visualize_batch(vis_data, max_value=1, args=args)
+                visualize_batch(vis_data, max_value=0.3, args=args)
+                visualize_batch(vis_data, max_value=0.1, args=args)
+
                 model.train()
-
-                # # TODO: cross validation (5% hold out)
-
-
-                    #         raw_data = raw_data.to(args.device)
-                    #         args.time_span = raw_data.size(2)
-                    #         cloud_mask = cloud_process(raw_data[:, 16:18].sum(dim=1, keepdim=False) >= 1)
-                    #         loss_mask = 1 - cloud_mask.unsqueeze(1)
-                    #         clean_imgs = raw_data[:, :15]
-                    #         noisy_imgs = noisy_process(raw_data)[:, :15]
-                    #         clean_imgs_ = clean_imgs * 2 - 1
-                    #         noisy_imgs_ = noisy_imgs * 2 - 1
-                    #         update_model_position_token(model, daycounts - daycounts.min())
-                    #
-                    #         clean_pred = model(clean_imgs_, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-                    #         noisy_pred = model(noisy_imgs_, 1, encoder_hidden_states=emb, return_dict=False)[0] * 0.5 + 0.5
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=0.3,
-                    #                           auto=False)
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=0.2,
-                    #                           auto=False)
-                    #         visualization_v44(args, clean_imgs, clean_pred, loss_mask, noisy_imgs, noisy_pred, scale=1.0,
-                    #                           auto=True)
-                    # pass
 
 
         if accelerator.is_main_process:
 
             if args.epoch % 1 == 0:
-                # Save the model checkpoint using torch save
                 PATH = os.path.join(args.output_dir, f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
-                # PATH = os.path.join(args.output_dir, f"embed_{args.epoch}.pt")
-                # accelerator.save(meta_embedding.state_dict(), PATH)
     accelerator.end_training()

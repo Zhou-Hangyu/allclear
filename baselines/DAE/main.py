@@ -293,14 +293,14 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
-                vis_num = max(int(5 / (args.tx / 3)), 1)
-                vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
-                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num],
-                            "outputs_real": outputs_real[:vis_num]}
-                visualize_batch(vis_data, min_value=0, max_value=1, args=args)
-                visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
-                visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)
-                visualize_batch(vis_data, min_value=0.3, max_value=1, args=args)
+                # vis_num = max(int(5 / (args.tx / 3)), 1)
+                # vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
+                #             "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num],
+                #             "outputs_real": outputs_real[:vis_num]}
+                # visualize_batch(vis_data, min_value=0, max_value=1, args=args)
+                # visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
+                # visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)
+                # visualize_batch(vis_data, min_value=0.3, max_value=1, args=args)
 
                 model.train()
 
@@ -312,3 +312,30 @@ if __name__ == "__main__":
                 PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
     accelerator.end_training()
+
+
+# import json
+#     try:
+#         dirr = "/scratch/allclear/metadata/v3/UnCRtainTS/"
+#         with open(os.path.join(dirr, f"s2p_tx{config.input_t}_train_20k_v1.json")) as file:
+#             dataset = json.load(file)
+#         with open(os.path.join(dirr, "cld30_shdw30_fpaths_train_20k.json")) as file:
+#             cld_shdw_fpaths = json.load(file)
+#         with open(os.path.join(dirr, f"train_rois_20k_scaling_pc{int(config.scaling_law*100)}.txt")) as file:
+#             train_rois = file.read().splitlines()
+#         with open(os.path.join(dirr, "val_rois_20k.txt")) as file:
+#             val_rois = file.read().splitlines()
+#     except:
+#         dirr = "/share/hariharan/cloud_removal/metadata/v3/"
+#         with open(os.path.join(dirr, f"s2p_tx{config.input_t}_train_20k_v1.json")) as file:
+#             dataset = json.load(file)
+#         with open(os.path.join(dirr, "cld30_shdw30_fpaths_train_20k.json")) as file:
+#             cld_shdw_fpaths = json.load(file)
+#         with open(os.path.join(dirr, f"train_rois_20k_scaling_pc{int(config.scaling_law*100)}.txt")) as file:
+#             train_rois = file.read().splitlines()
+#         with open(os.path.join(dirr, "val_rois_20k.txt")) as file:
+#             val_rois = file.read().splitlines()
+#
+#
+# input_t = tx
+# scaling_law = 1, 0.1, 0.01

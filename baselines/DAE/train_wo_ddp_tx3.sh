@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Command: bash baselines/DAE/train_wo_ddp.sh
+# Command: bash baselines/DAE/train_wo_ddp_tx3.sh
 
 SCRIPT_PATH="baselines/DAE/main.py"
 #SCRIPT_PATH="experimental_scripts/SimpleUnet/main_v2.py"
 MODE="train"
 #LR=1e-5
 #LR=2e-5
-LR=5e-5
+LR=8e-5
 TRAIN_BATCH_SIZE=4
-NUM_EPOCHS=1
+NUM_EPOCHS=2
 MAX_DIM=512
 MODEL_BLOCKS="CCCCAA"
 WANDB=1
@@ -26,9 +26,9 @@ TX=3
 #RUN_NAME="3dunet_loss12_src_ccccaa_lr1e-05_aug2"
 #RUN_NAME="3dunet_loss12_src_ccccaa_lr2e-05_aug2"
 #RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug2"
-RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug3"
+RUN_NAME="3dunet_loss12_src_ccccaa_lr8e-05_aug3_tx3_s1"
 #DATASET="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_train_2k_v1.json"  # for testing the training code
-DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx3_train_20k_v1.json"
+DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx3_train_20k_v2.json"
 OUTPUT_DIR="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae"
 
 export CUDA_VISIBLE_DEVICES=2

@@ -288,6 +288,7 @@ class DAE(BaseModel):
         params = torch.load(self.args.dae_checkpoint, map_location=torch.device('cpu'))
         filtered_params = {k: v for k, v in params.items() if "custom_pos_embed.position" not in k}
         model.load_state_dict(filtered_params, strict=False)
+        print(f"Total Number of Trainable Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
         # for key in params.keys():
         #     if "custom_pos_embed.position" in key: break
         # self.update_model_number_position_token(model) # TODO: figure out what these are

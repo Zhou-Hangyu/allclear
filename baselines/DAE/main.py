@@ -53,6 +53,7 @@ def parse_arguments():
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
+    parser.add_argument("--percent", type=int, default=100, help="Percentage of the dataset to use during training")
 
     # Reproducibility
     parser.add_argument("--seed", type=int, default=0, help="The random seed")
@@ -81,8 +82,11 @@ if __name__ == "__main__":
         cld_shdw_fpaths = json.load(f)
 
     # load in train and val rois
-    with open("/share/hariharan/cloud_removal/metadata/v3/train_rois_20k.txt") as f:
-        train_rois = f.read().splitlines()
+    # with open("/share/hariharan/cloud_removal/metadata/v3/train_rois_20k.txt") as f:
+    #     train_rois = f.read().splitlines()
+    # for scaling law experiments
+    with open(os.path.join(f"/scratch/allclear/metadata/v3/UnCRtainTS/train_rois_20k_scaling_pc{args.percent}.txt")) as file:
+        train_rois = file.read().splitlines()
     with open("/share/hariharan/cloud_removal/metadata/v3/val_rois_20k.txt") as f:
         val_rois = f.read().splitlines()
 
@@ -313,29 +317,3 @@ if __name__ == "__main__":
                 accelerator.save(model.state_dict(), PATH)
     accelerator.end_training()
 
-
-# import json
-#     try:
-#         dirr = "/scratch/allclear/metadata/v3/UnCRtainTS/"
-#         with open(os.path.join(dirr, f"s2p_tx{config.input_t}_train_20k_v1.json")) as file:
-#             dataset = json.load(file)
-#         with open(os.path.join(dirr, "cld30_shdw30_fpaths_train_20k.json")) as file:
-#             cld_shdw_fpaths = json.load(file)
-#         with open(os.path.join(dirr, f"train_rois_20k_scaling_pc{int(config.scaling_law*100)}.txt")) as file:
-#             train_rois = file.read().splitlines()
-#         with open(os.path.join(dirr, "val_rois_20k.txt")) as file:
-#             val_rois = file.read().splitlines()
-#     except:
-#         dirr = "/share/hariharan/cloud_removal/metadata/v3/"
-#         with open(os.path.join(dirr, f"s2p_tx{config.input_t}_train_20k_v1.json")) as file:
-#             dataset = json.load(file)
-#         with open(os.path.join(dirr, "cld30_shdw30_fpaths_train_20k.json")) as file:
-#             cld_shdw_fpaths = json.load(file)
-#         with open(os.path.join(dirr, f"train_rois_20k_scaling_pc{int(config.scaling_law*100)}.txt")) as file:
-#             train_rois = file.read().splitlines()
-#         with open(os.path.join(dirr, "val_rois_20k.txt")) as file:
-#             val_rois = file.read().splitlines()
-#
-#
-# input_t = tx
-# scaling_law = 1, 0.1, 0.01

@@ -4,7 +4,7 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 import torch.nn.functional as F
-from utils import benchmark_visualization
+# from allclear import benchmark_visualization
 
 import logging
 logging.getLogger("transformers").setLevel(logging.ERROR)

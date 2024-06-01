@@ -234,6 +234,7 @@ if __name__ == "__main__":
                 max_samples = max(int(10 / (args.tx / 3)), 1)
                 inputs = []
                 outputs = []
+                outputs_real = []
                 targets = []
                 loss_masks = []
                 sensors = [args.main_sensor] + args.aux_sensors
@@ -254,7 +255,9 @@ if __name__ == "__main__":
                     inputs.append(data['input_images'])
                     with torch.no_grad():
                         pred = model(data['input_images'], 1, encoder_hidden_states=emb, return_dict=False)[0]
+                        pred_real = model(torch.cat((data['target'], data['input_images'][:,-2:,...]), dim=1), 1, encoder_hidden_states=emb, return_dict=False)[0]
                         outputs.append(pred)
+                        outputs_real.append(pred_real)
                         loss1 = (F.mse_loss(pred, data['target'][:, :args.out_channel],
                                             reduction="none") * loss_mask).mean() * 3
                         pred = torch.clip(pred, 0, 0.5) / 0.5
@@ -271,6 +274,7 @@ if __name__ == "__main__":
 
                 inputs = torch.cat(inputs, dim=0).permute(0, 2, 1, 3, 4)
                 outputs = torch.cat(outputs, dim=0).permute(0, 2, 1, 3, 4)
+                outputs_real = torch.cat(outputs_real, dim=0).permute(0, 2, 1, 3, 4)
                 targets = torch.cat(targets, dim=0).permute(0, 2, 1, 3, 4)
                 loss_masks = torch.cat(loss_masks, dim=0).permute(0, 2, 1, 3, 4)
                 timestamps = torch.cat(timestamps, dim=0)
@@ -291,7 +295,8 @@ if __name__ == "__main__":
 
                 vis_num = max(int(5 / (args.tx / 3)), 1)
                 vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
-                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num]}
+                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num],
+                            "outputs_real": outputs_real[:vis_num]}
                 visualize_batch(vis_data, min_value=0, max_value=1, args=args)
                 visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
                 visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)

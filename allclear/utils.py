@@ -96,13 +96,16 @@ def load_image_center_crop(image, channels=None, center_crop=False, size=(256, 2
         data = data[:, offset_y:offset_y + size[1], offset_x:offset_x + size[0]]
     return data
 
-def normalize(array, clip=True, min_value=0, max_value=None, min_percentile=1, max_percentile=99):
+def normalize(array, clip=True, min_value=0, max_value=None, min_percentile=1, max_percentile=99, percentile_norm=False):
     '''
     normalize: normalize a numpy array so all value are between 0 and 1
     '''
     if clip:
         array = np.clip(array, min_value, max_value)
-    array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
+    if percentile_norm:
+        array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
+    else:
+        array_min, array_max = min_value, max_value
     try:
         normalized_array = (array - array_min) / (array_max - array_min)
     except Exception as e:
@@ -267,12 +270,12 @@ def preprocess(img, sensor, min_value, max_value):
     img = img.permute(1, 2, 0).numpy()
     if sensor == "s2_toa":
         img = img[:, :, [3, 2, 1]]
-        img = normalize(img, min_value=min_value, max_value=max_value, min_percentile=0, max_percentile=100)
+        img = normalize(img, min_value=min_value, max_value=max_value, percentile_norm=False)
     elif sensor == "s1":
         sar = np.zeros((img.shape[0], img.shape[1], 3))
-        sar[...,0] = normalize(img[...,0], clip=False, min_percentile=0, max_percentile=100)  # VV
-        sar[...,1] = normalize(img[...,1], clip=False, min_percentile=0, max_percentile=100)   # VH
-        sar[...,2] = normalize(img[...,1] - img[...,0], clip=False, min_percentile=0, max_percentile=100)  # VV - VH
+        sar[...,0] = normalize(img[...,0], clip=False, min_percentile=0, max_percentile=100, percentile_norm=True)  # VV
+        sar[...,1] = normalize(img[...,1], clip=False, min_percentile=0, max_percentile=100, percentile_norm=True)   # VH
+        sar[...,2] = normalize(img[...,1] - img[...,0], clip=False, min_percentile=0, max_percentile=100, percentile_norm=True)  # VV - VH
         img = sar
     elif sensor == "loss_mask":
         img = img
@@ -299,6 +302,7 @@ def visualize_batch(data, min_value, max_value, show_fig=False, save_fig=True, a
     sensors = data["sensors"]
     inputs = data["inputs"].cpu()
     outputs = data["outputs"].cpu()
+    outputs_real = data["outputs_real"].cpu()
     targets = data["targets"].cpu()
     loss_masks = data["loss_masks"].cpu()
     timestamps = data["timestamps"].cpu()
@@ -314,7 +318,7 @@ def visualize_batch(data, min_value, max_value, show_fig=False, save_fig=True, a
 
     for bid in range(inputs.size(0)):
 
-        nrows = 3 + len(sensors)
+        nrows = 4 + len(sensors)
         ncols = timestamps.shape[1]
         fig, axs = plt.subplots(nrows, ncols, figsize=(ncols * 2, nrows * 2))
         fig.suptitle(f"ROI: {roi_ids[bid]}  Geolocation: ({geolocations[bid, 0].item():.3f}, {geolocations[bid, 1].item():.3f})", size=14)
@@ -326,15 +330,18 @@ def visualize_batch(data, min_value, max_value, show_fig=False, save_fig=True, a
             target = preprocess(targets[bid, fid, channels[sensors[0]]], sensors[0], min_value, max_value)
             axs[1, fid].imshow(target)
             if fid == 0: axs[1, fid].set_ylabel(f"Targets ({sensors[0]})", size=14)
+            output_real = preprocess(outputs_real[bid, fid, channels[sensors[0]]], sensors[0], min_value, max_value)
+            axs[2, fid].imshow(output_real)
+            if fid == 0: axs[2, fid].set_ylabel(f"OutputsR({sensors[0]})", size=14)
             output = preprocess(outputs[bid, fid, channels[sensors[0]]], sensors[0], min_value, max_value)
-            axs[2, fid].imshow(output)
-            if fid == 0: axs[2, fid].set_ylabel(f"Outputs ({sensors[0]})", size=14)
+            axs[3, fid].imshow(output)
+            if fid == 0: axs[3, fid].set_ylabel(f"Outputs ({sensors[0]})", size=14)
             start_channel = 0
             for sid, sensor in enumerate(sensors):
                 sensor_channels = [channel + start_channel for channel in channels[sensor]]
                 input = preprocess(inputs[bid, fid, sensor_channels], sensor, min_value, max_value)
-                axs[sid + 3, fid].imshow(input)
-                if fid == 0: axs[sid + 3, fid].set_ylabel(f"Inputs ({sensor})", size=14)
+                axs[sid + 4, fid].imshow(input)
+                if fid == 0: axs[sid + 4, fid].set_ylabel(f"Inputs ({sensor})", size=14)
                 start_channel += len(channels[sensor])
 
         for ax in axs.flatten():

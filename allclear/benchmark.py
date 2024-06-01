@@ -399,6 +399,7 @@ def parse_arguments():
     parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
     parser.add_argument("--unique-roi", type=int, default=0, help="0 uses all metadata, 1 uses only unique ROI")
+    parser.add_argument("--draw-vis", type=int, default=0, help="0 dont draw, 1 draw results")
     
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
@@ -451,5 +452,6 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")
     print("Loading Benchmark Engine...")
+    print(f"Unique ROI: {args.unique_roi}")
     engine = BenchmarkEngine(args)
     engine.run()

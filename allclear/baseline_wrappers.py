@@ -4,6 +4,7 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 import torch.nn.functional as F
+from utils import benchmark_visualization
 
 import logging
 logging.getLogger("transformers").setLevel(logging.ERROR)
@@ -63,7 +64,7 @@ class UnCRtainTS(BaseModel):
         to_date = lambda string: datetime.strptime(string, "%Y-%m-%d").timestamp()
         self.S1_LAUNCH = to_date("2014-04-03")
         
-
+        self.args = args
         self.config = self.get_config()  # bug
         self.model = get_model(self.config).to(self.device)
 
@@ -76,7 +77,6 @@ class UnCRtainTS(BaseModel):
         else:
             self.num_input_dims = 15
         self.S2_BANDS = 13
-
 
     def get_model_config(self):
         pass
@@ -152,8 +152,8 @@ class UnCRtainTS(BaseModel):
         # dates = capture_dates - self.S1_LAUNCH        
         dates = inputs["time_differences"]
 
-        print("input_images", input_imgs.shape)
-        print("target", target_imgs.shape)
+        # print("input_images", input_imgs.shape)
+        # print("target", target_imgs.shape)
 
         model_inputs = {"A": input_imgs, "B": target_imgs, "dates": dates, "masks": masks}
 
@@ -171,19 +171,27 @@ class UnCRtainTS(BaseModel):
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
 
-        # save the output and input images in numpy format
-        # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
-        # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"
-        # target_dir = "/share/hariharan/ck696/allclear/experiments/target.npy"
-        # import numpy as np
-        # np.save(input_dir, input_imgs.cpu().numpy())
-        # np.save(output_dir, out.cpu().numpy())
-        # np.save(target_dir, target_imgs.cpu().numpy())
 
-        # print(input_imgs.max(), input_imgs.min())
-        # print(out.max(), out.min())
-        # print(target_imgs.max(), target_imgs.min())
-        # assert 0 == 1
+        if self.args.draw_vis:
+            inputs["output"] = out.cpu()
+            benchmark_visualization(inputs, self.args)
+            # # save the output and input images in numpy format
+            # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
+            # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"
+            # target_dir = "/share/hariharan/ck696/allclear/experiments/target.npy"
+            # mask_dir = "/share/hariharan/ck696/allclear/experiments/mask.npy"
+            # import numpy as np
+            # np.save(input_dir, input_imgs.cpu().numpy())
+            # np.save(output_dir, out.cpu().numpy())
+            # np.save(target_dir, target_imgs.cpu().numpy())
+            # np.save(mask_dir, masks.cpu().numpy())
+
+            # print(input_imgs.max(), input_imgs.min())
+            # print(out.max(), out.min())
+            # print(target_imgs.max(), target_imgs.min())
+            # print(inputs.keys())
+            # torch.save(inputs, "/share/hariharan/ck696/allclear/experiments/inputs.pth")
+            # assert 0 == 1
             
         return {"output": out, "variance": var}
 

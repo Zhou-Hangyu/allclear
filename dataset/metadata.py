@@ -224,13 +224,14 @@ if __name__ == "__main__":
     VERBOSE = False
     # DATA_PATH = "/share/hariharan/cloud_removal/MultiSensor/dataset_30k_v4"
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
-    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_train_20Ksamples.csv")
-    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_test_4Ksamples.csv")
+    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_train_20Ksamples.csv")
+    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_test_4Ksamples.csv")
     # SELECTED_ROIS_FNAME = "test_4k.txt"
+    SELECTED_ROIS_FNAME = "test_4k_v2.txt"
     # SELECTED_ROIS_FNAME = "train_2k.txt"
     # SELECTED_ROIS_FNAME = "dataset_500.txt"
     # SELECTED_ROIS_FNAME = "train_9k.txt"
-    SELECTED_ROIS_FNAME = "train_20k.txt"
+    # SELECTED_ROIS_FNAME = "train_20k.txt"
     # SELECTED_ROIS = ROIS
     # with open(f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
     #     SELECTED_ROIS = f.read().splitlines()

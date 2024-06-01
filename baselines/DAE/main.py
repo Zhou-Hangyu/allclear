@@ -53,6 +53,7 @@ def parse_arguments():
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
+    parser.add_argument("--percent", type=int, default=100, help="Percentage of the dataset to use during training")
 
     # Reproducibility
     parser.add_argument("--seed", type=int, default=0, help="The random seed")
@@ -81,8 +82,11 @@ if __name__ == "__main__":
         cld_shdw_fpaths = json.load(f)
 
     # load in train and val rois
-    with open("/share/hariharan/cloud_removal/metadata/v3/train_rois_20k.txt") as f:
-        train_rois = f.read().splitlines()
+    # with open("/share/hariharan/cloud_removal/metadata/v3/train_rois_20k.txt") as f:
+    #     train_rois = f.read().splitlines()
+    # for scaling law experiments
+    with open(os.path.join(f"/scratch/allclear/metadata/v3/UnCRtainTS/train_rois_20k_scaling_pc{args.percent}.txt")) as file:
+        train_rois = file.read().splitlines()
     with open("/share/hariharan/cloud_removal/metadata/v3/val_rois_20k.txt") as f:
         val_rois = f.read().splitlines()
 
@@ -293,14 +297,14 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
-                vis_num = max(int(5 / (args.tx / 3)), 1)
-                vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
-                            "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num],
-                            "outputs_real": outputs_real[:vis_num]}
-                visualize_batch(vis_data, min_value=0, max_value=1, args=args)
-                visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
-                visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)
-                visualize_batch(vis_data, min_value=0.3, max_value=1, args=args)
+                # vis_num = max(int(5 / (args.tx / 3)), 1)
+                # vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
+                #             "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num],
+                #             "outputs_real": outputs_real[:vis_num]}
+                # visualize_batch(vis_data, min_value=0, max_value=1, args=args)
+                # visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
+                # visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)
+                # visualize_batch(vis_data, min_value=0.3, max_value=1, args=args)
 
                 model.train()
 
@@ -312,3 +316,4 @@ if __name__ == "__main__":
                 PATH = os.path.join(args.output_dir, args.runname, "checkpoints", f"model_{args.runname}_{args.epoch}.pt")
                 accelerator.save(model.state_dict(), PATH)
     accelerator.end_training()
+

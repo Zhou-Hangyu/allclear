@@ -1,6 +1,6 @@
 #!/bin/bash
 rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
-
+export CUDA_VISIBLE_DEVICES=3
 # Command: bash demos/run_benchmark_dae.sh
 
 
@@ -27,17 +27,11 @@ WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model/src/re
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_no_s1"
 EXP_NAME="noSAR_1"
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_pretrained_with_s1"
-# EXP_NAME="diagonal_1"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_allclear_EP20_testing_sen12mrcstr"
+# EXP_NAME="allclear_0529_20k_v2"
 
-# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_repro"
-# EXP_NAME="allclear_0524"
-
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0529_allclear_EP20"
-EXP_NAME="allclear_0529_20k_v2"
-
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0531_allclear_EP20"
-EXP_NAME="allclear_0531_20k"
+# EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/uncrtaints/init_0531_allclear_EP20_testing_sen12mrcstr"
+# EXP_NAME="allclear_0531_20k"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"
@@ -61,4 +55,7 @@ echo "Running script"
   --uc-weight-folder $WEIGHT_FOLDER \
   --uc-exp-name $EXP_NAME \
   --uc-s1 1 \
-  --unique-roi 1
+  --unique-roi 1 \
+  --dataset-type $"SEN12MS-CR-TS" \
+  --sen12mscrts-rescale-method "default" \
+  --sen12mscrts-reset-dates "none"

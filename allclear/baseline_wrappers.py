@@ -129,11 +129,12 @@ class UnCRtainTS(BaseModel):
         inputs["target"] = inputs["target"].to(self.device)
         inputs["input_cld_shdw"] = inputs["input_cld_shdw"].to(self.device)
         inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)[:,:,:self.num_input_dims]
-        inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)
+        inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)[:,:,:self.S2_BANDS]
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
 
         # print("input_images", inputs["input_images"].shape)
         # print("target", inputs["target"].shape)
+        # print("input_cld_shdw", inputs["input_cld_shdw"].shape)
 
         return inputs
 
@@ -171,10 +172,9 @@ class UnCRtainTS(BaseModel):
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
 
-
         if self.args.draw_vis:
             inputs["output"] = out.cpu()
-            benchmark_visualization(inputs, self.args)
+            # benchmark_visualization(inputs, self.args)
             # # save the output and input images in numpy format
             # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
             # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"

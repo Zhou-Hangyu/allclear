@@ -245,44 +245,97 @@ class BenchmarkEngine:
         return model
 
     def setup_data_loader(self):
-        with open(self.args.dataset_fpath, "r") as f:
-            dataset = json.load(f)
-        with open(self.args.cld_shdw_fpaths, "r") as f:
-            cld_shdw_fpaths = json.load(f)
-        print(f"Selected ROIs: {self.args.selected_rois}")
-        selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
+
+        if self.args.dataset_type == "AllClear":
+            with open(self.args.dataset_fpath, "r") as f:
+                dataset = json.load(f)
+            with open(self.args.cld_shdw_fpaths, "r") as f:
+                cld_shdw_fpaths = json.load(f)
+            print(f"Selected ROIs: {self.args.selected_rois}")
+            selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
+            
+            if self.args.unique_roi == 1:
+                # selected_rois = "unique"
+                print(f"Number of total ROIs: {len(dataset)}")
+                unique_dataset = {}
+                unique_indices = []
+                count = 0
+                prev_id = "0"
+                for ID, info in dataset.items():
+                    roi_id = info["roi"][0]
+                    if prev_id == roi_id or roi_id in unique_indices: 
+                        unique_indices.append(roi_id)
+                    else:
+                        unique_dataset[str(count)] = dataset[ID]
+                        count += 1
+                        prev_id = roi_id
+                dataset = unique_dataset
+                # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
+                print(f"Number of unique ROIs: {len(dataset)}")
+            
+            dataset = CRDataset(
+                dataset=dataset,
+                selected_rois=selected_rois,
+                main_sensor=self.args.main_sensor,
+                aux_sensors=self.args.aux_sensors,
+                aux_data=self.args.aux_data,
+                tx=self.args.tx,
+                target_mode=self.args.target_mode,
+                cld_shdw_fpaths=cld_shdw_fpaths,
+                do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
+            )
+            return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
-        if self.args.unique_roi == 1:
-            # selected_rois = "unique"
-            print(f"Number of total ROIs: {len(dataset)}")
-            unique_dataset = {}
-            unique_indices = []
-            count = 0
-            prev_id = "0"
-            for ID, info in dataset.items():
-                roi_id = info["roi"][0]
-                if prev_id == roi_id or roi_id in unique_indices: 
-                    unique_indices.append(roi_id)
-                else:
-                    unique_dataset[str(count)] = dataset[ID]
-                    count += 1
-                    prev_id = roi_id
-            dataset = unique_dataset
-            # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
-            print(f"Number of unique ROIs: {len(dataset)}")
+        elif self.args.dataset_type == "SEN12MS-CR-TS":
+            if "ck696" in os.getcwd():
+                sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/data")
+            else:
+                sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/data/")
+            from SEN12MSCRTS import SEN12MSCRTS
+            dt_test = SEN12MSCRTS(split='test', region='all', 
+                                  sample_type="cloudy_cloudfree", 
+                                    n_input_samples=self.args.tx, 
+                                    rescale_method=self.args.sen12mscrts_rescale_method,
+                                    )
+            
+            return DataLoader(dt_test, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
+    
+    def convert_data_format(self, batch):
+        # print(batch.keys())
+
+        s1 = torch.stack(batch["input"]["S1"], dim=1)
+        s2 = torch.stack(batch["input"]["S2"], dim=1)
+
+        input_images = torch.cat([s1, s2], dim=2)
+        input_cld_shdw = torch.stack(batch["input"]["masks"], dim=1).unsqueeze(1).repeat(1,2,1,1,1)
+
+        s1 = torch.stack(batch["target"]["S1"], dim=1)
+        s2 = torch.stack(batch["target"]["S2"], dim=1)
+
+        target = torch.cat([s1, s2], dim=2)
+        target_cld_shdw = torch.stack(batch["target"]["masks"], dim=1).unsqueeze(1).repeat(1,2,1,1,1)
+
+        dates = torch.stack((torch.stack(batch['input']['S1 TD']),
+                             torch.stack(batch['input']['S2 TD']))).float().mean(dim=0)
         
-        dataset = CRDataset(
-            dataset=dataset,
-            selected_rois=selected_rois,
-            main_sensor=self.args.main_sensor,
-            aux_sensors=self.args.aux_sensors,
-            aux_data=self.args.aux_data,
-            tx=self.args.tx,
-            target_mode=self.args.target_mode,
-            cld_shdw_fpaths=cld_shdw_fpaths,
-            do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
-        )
-        return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
+        if self.args.sen12mscrts_reset_dates == "zeros":
+            dates = torch.zeros_like(dates)
+        elif self.args.sen12mscrts_reset_dates == "min":
+            dates = dates - dates.min()
+        elif self.args.sen12mscrts_reset_dates == "none":
+            dates = dates
+
+        inputs = {
+            "input_images": input_images.permute(0,2,1,3,4),
+            "input_cld_shdw": input_cld_shdw,
+            "target": target.permute(0,2,1,3,4),
+            "target_cld_shdw": target_cld_shdw,
+            "dw": None,
+            "target_dw": None,
+            "time_differences": dates
+        }
+
+        return inputs
 
     def run(self):
         print("Running Benchmark...")
@@ -304,9 +357,11 @@ class BenchmarkEngine:
 
         for data_id, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
-            # if data_id == 10:
-            #     print("Breaking after 10 batches")
-            #     break
+            if data_id == 10:
+                break
+
+            if self.args.dataset_type == "SEN12MS-CR-TS":
+                data = self.convert_data_format(data)
 
             with torch.no_grad():
                 data = self.model.preprocess(data)
@@ -314,7 +369,7 @@ class BenchmarkEngine:
                 target_cld_shdw_mask = (data["target_cld_shdw"][:,0,...] + data["target_cld_shdw"][:,1,...]) > 0
                 target_non_cld_shdw_mask = torch.logical_not(target_cld_shdw_mask).cpu()
                 target_non_cld_shdw_masks_all.append(target_non_cld_shdw_mask)
-                target_lulc_maps.append(data["target_dw"].cpu())
+                if self.args.dataset_type == "AllClear": target_lulc_maps.append(data["target_dw"].cpu())
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
 
@@ -326,9 +381,11 @@ class BenchmarkEngine:
             batch_outputs = torch.cat(outputs_all, dim=0)
             batch_targets = torch.cat(targets_all, dim=0)
             batch_masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
-            batch_lulc_maps = torch.cat(target_lulc_maps, dim=0)
-            
-            metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device, lulc_maps=batch_lulc_maps)
+            if self.args.dataset_type == "AllClear": 
+                batch_lulc_maps = torch.cat(target_lulc_maps, dim=0)
+                metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device, lulc_maps=batch_lulc_maps)
+            else:
+                metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device)
             batch_results = metrics.evaluate_aggregate()
 
             # Store per-batch metrics
@@ -336,10 +393,11 @@ class BenchmarkEngine:
                 per_batch_metrics[key].append(batch_results[key])
             
             # Store stratified metrics for each LULC class
-            strat_lulc_metrics = metrics.evaluate_strat_lulc(mode="map")
-            for lulc_class, class_metrics in strat_lulc_metrics.items():
-                for metric, value in class_metrics.items():
-                    lulc_metrics_all[lulc_class][metric].append(value)
+            if self.args.dataset_type == "AllClear": 
+                strat_lulc_metrics = metrics.evaluate_strat_lulc(mode="map")
+                for lulc_class, class_metrics in strat_lulc_metrics.items():
+                    for metric, value in class_metrics.items():
+                        lulc_metrics_all[lulc_class][metric].append(value)
 
             # Clear lists for the next batch
             outputs_all.clear()
@@ -351,23 +409,32 @@ class BenchmarkEngine:
         final_results = {key: torch.tensor(values).nanmean().item() for key, values in per_batch_metrics.items()}
         print(final_results)
 
-        # Compute final stratified metrics for each LULC class
-        final_lulc_metrics = {
-            lulc_class: {metric: torch.tensor(values).nanmean().item() for metric, values in class_metrics.items()}
-            for lulc_class, class_metrics in lulc_metrics_all.items()
-        }
-        print(final_lulc_metrics)
-
-        plot_lulc_metrics(final_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
         print(f"experiment_output_path: {self.args.experiment_output_path}")
+
+        # Compute final stratified metrics for each LULC class
+        os.makedirs(f"{self.args.experiment_output_path}", exist_ok=True)
+        os.makedirs(f"{self.args.experiment_output_path}/{self.args.dataset_type}", exist_ok=True)
+
+        if self.args.dataset_type == "AllClear": 
+            final_lulc_metrics = {
+                lulc_class: {metric: torch.tensor(values).nanmean().item() for metric, values in class_metrics.items()}
+                for lulc_class, class_metrics in lulc_metrics_all.items()
+            }
+            print(final_lulc_metrics)
+            plot_lulc_metrics(final_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
         
+            final_lulc_metrics = pd.DataFrame(final_lulc_metrics)
+            final_lulc_metrics.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_lulc_metrics.csv", index=True)
+
         final_results = pd.DataFrame(final_results, index=[0])
-        final_results.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_results.csv", index=False)
-        final_lulc_metrics = pd.DataFrame(final_lulc_metrics)
-        final_lulc_metrics.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_lulc_metrics.csv", index=True)
+        final_results.to_csv(f"{self.args.experiment_output_path}/{self.args.dataset_type}/{self.args.model_name}_results.csv", index=False)
 
         self.cleanup()
-        return final_results, final_lulc_metrics
+
+        if self.args.dataset_type == "AllClear": 
+            return final_results, final_lulc_metrics
+        else:
+            return final_results
 
     def cleanup(self):
         pass
@@ -391,7 +458,8 @@ def parse_arguments():
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
-    parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
+    parser.add_argument("--dataset-type", type=str, default="AllClear", choices=["AllClear", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
+    # parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
     parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
     parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
@@ -433,6 +501,10 @@ def parse_arguments():
     util_args.add_argument("--utilise-config", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/configs/demo_sen12mscrts.yaml", help="Config file for UTILISE")
     util_args.add_argument("--utilise-checkpoint", type=str, default="/share/hariharan/cloud_removal/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth", help="Checkpoint for UTILISE")
     
+    sen12mscrts_args = parser.add_argument_group("SEN12MSCRTS Arguments")
+    sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
+    sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")
+
     args = parser.parse_args()
     return args
 

@@ -9,7 +9,6 @@ import torch.nn.functional as F
 import glob
 
 
-
 def square_cld_shdw_maxpool(image_size=256):
     """Generate square cloud & shadow masks."""
     mask_scale = np.random.choice([16, 32, 64])
@@ -45,11 +44,11 @@ def square_cld_shdw(image_size=256):
     return square_cld_shdw
 
 
-def random_opacity():
+def random_opacity(opaque_prob=0.9):
     """Generate a random opacity value."""
-    if torch.rand(1).item() > 0.9:
+    if torch.rand(1).item() < opaque_prob:  # opaque
         return 1
-    else:
+    else:   # semi-transparent
         return torch.rand(1).item()
 
 
@@ -111,7 +110,7 @@ class CRDataset(Dataset):
                  s2_toa_channels=None,
                  max_diff=2,
                  cld_shdw_fpaths=None,
-                 do_preprocess=True,):
+                 do_preprocess=True, ):
         if aux_sensors is None:
             aux_sensors = []
         if aux_data is None:
@@ -120,7 +119,7 @@ class CRDataset(Dataset):
             self.dataset = dataset
         else:
             self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
-            self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())} # reindex the dataset
+            self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())}  # reindex the dataset
         self.main_sensor = main_sensor
         self.aux_sensors = aux_sensors
         self.sensors = [main_sensor] + aux_sensors
@@ -160,8 +159,8 @@ class CRDataset(Dataset):
     def sample_cld_shdw(self):
         """Randomly sample clouds from existing cloud masks in the dataset.
         cld_shdw_fpaths: list of file path to all cloud and shadow masks in the dataset,
-        where cloud in channel 1, shadow in channel 2."""
-        while True: # Retry until a valid cloud shadow mask is loaded
+        where cloud in channel 1, shadow in channel 2 (shape 2xHxW)."""
+        while True:  # Retry until a valid cloud shadow mask is loaded
             idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
             cld_shdw_fpath = self.cld_shdw_fpaths[idx]
             if os.path.exists(cld_shdw_fpath):
@@ -241,9 +240,11 @@ class CRDataset(Dataset):
             sensor_inputs = sample[sensor]
             for sensor_input in sensor_inputs:
                 timestamp, fpath = sensor_input
-                timestamp = datetime.strptime(timestamp, "%Y-%m-%d")                
-                if not os.path.exists(fpath): # Add this line to handle the case when the script is not running on Sun / Bala's server
-                    fpath = fpath.replace("/scratch/allclear/dataset_v3/", "/share/hariharan/cloud_removal/MultiSensor/")
+                timestamp = datetime.strptime(timestamp, "%Y-%m-%d")
+                if not os.path.exists(
+                        fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
+                    fpath = fpath.replace("/scratch/allclear/dataset_v3/",
+                                          "/share/hariharan/cloud_removal/MultiSensor/")
                 image = self.load_and_center_crop(fpath, self.channels[sensor], self.center_crop_size)
                 image = self.preprocess(image, sensor, do_preprocess=self.do_preprocess)
                 inputs[sensor].append((timestamp, image))
@@ -265,7 +266,8 @@ class CRDataset(Dataset):
                             dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
                             inputs["input_dw"].append((timestamp, dw))
                         else:
-                            inputs["input_dw"].append((timestamp, torch.ones(len(self.channels['dw']), *self.center_crop_size)))  # placeholder
+                            inputs["input_dw"].append((timestamp, torch.ones(len(self.channels['dw']),
+                                                                             *self.center_crop_size)))  # placeholder
             inputs[sensor] = sorted(inputs[sensor], key=lambda x: x[0])
         timestamps = sorted(set(timestamps))
         timestamps_main_sensor = [timestamp for timestamp, _ in inputs[self.main_sensor]]
@@ -291,10 +293,12 @@ class CRDataset(Dataset):
             if "target" not in sample.keys():
                 raise ValueError("Target is not available in the sample.")
             timestamp, fpath = sample["target"][0]
-            if not os.path.exists(fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
+            if not os.path.exists(
+                    fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
                 fpath = fpath.replace("/scratch/allclear/dataset_v3/", "/share/hariharan/cloud_removal/MultiSensor/")
             image = self.load_and_center_crop(fpath, self.channels[self.main_sensor], self.center_crop_size)
-            image = self.preprocess(image, self.main_sensor, do_preprocess=self.do_preprocess)  # target by default is the main sensor
+            image = self.preprocess(image, self.main_sensor,
+                                    do_preprocess=self.do_preprocess)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
                 cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
@@ -331,15 +335,28 @@ class CRDataset(Dataset):
             synthetic_clds_shdws = torch.zeros_like(inputs_cld_shdw, dtype=torch.float16)
             for i in range(inputs_cld_shdw.shape[0]):
                 # sampled_cld_shdw = erode_dilate_cld_shdw(self.sample_cld_shdw()) * random_opacity()
-                sampled_cld_shdw = self.sample_cld_shdw() * random_opacity()
-                squared_cld_shdw = square_cld_shdw() * random_opacity()
+                sampled_cld_shdw = self.sample_cld_shdw()
+                sampled_cld_shdw[0] *= random_opacity(opaque_prob=0.8)  # cld is set to be opaque with high probability
+                sampled_cld_shdw[1] *= random_opacity(opaque_prob=0)  # shdw is always semi-transparent bc it's not an occlusion
+                squared_cld_shdw = square_cld_shdw()
+                squared_cld_shdw[0] *= random_opacity(opaque_prob=0.8)
+                squared_cld_shdw[1] *= random_opacity(opaque_prob=0)
                 synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
-                synthetic_cld_shdw[1] *= (synthetic_cld_shdw[0] > 0)  # no shdw on cld
+                synthetic_cld_shdw[1] *= torch.logical_not(synthetic_cld_shdw[0] > 0)  # no shdw on cld
                 synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            # for augmentation v3
+            synthetic_shdws = synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            synthetic_shdws[synthetic_shdws == 0] = 1
+            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * synthetic_shdws
             synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
-            
 
+            # for augmentation v2
+            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
+            #             1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
+            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
+            #             1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
+
+            # for augmentation v1
             # synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
             # synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
             synthetic_inputs_main_sensor = torch.clip(synthetic_inputs_main_sensor, 0, 1)
@@ -415,7 +432,7 @@ class CRDataset(Dataset):
                 # Shape: (1, T, H, W)
                 "input_dw": inputs_dw.permute(1, 0, 2, 3) if inputs_dw is not None else None,  # Shape: (C, T, H, W)
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
-                "timestamps": torch.tensor(timestamps), # Shape: (T)
+                "timestamps": torch.tensor(timestamps),  # Shape: (T)
                 "target_timestamps": torch.tensor(target_timestamps),
                 "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
                 "roi": roi,

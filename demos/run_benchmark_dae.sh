@@ -9,8 +9,9 @@ DATASET_PATH="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json
 MODEL_NAME="dae"
 BATCH_SIZE=5
 NUM_WORKERS=8
-DEVICE="cuda:1"
-SELECTED_ROIS='roi503195 roi124670 roi623817'
+DEVICE="cuda:2"
+#SELECTED_ROIS='roi503195 roi124670 roi623817'
+SELECTED_ROIS='roi503195 roi124670 roi623817 roi652551 roi124702 roi677264'
 #SELECTED_ROIS='0 1 14 21 29 31 34 35 37 38 50 51 52' # 13 test rois from sen12ms-cr-ts
 # SELECTED_ROIS='0 1' # 13 test rois from sen12ms-cr-ts
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/dae/init"
@@ -26,9 +27,9 @@ DAE_IN_CHANNEL=15
 DAE_OUT_CHANNEL=13
 DAE_MODEL_BLOCKS="CCCCAA"
 DAE_NORM_NUM_GROUPS=4
-DAE_CHECKPOINT="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae/model_test-run-3-loss2*10_0_20100.pt"
-
-#DAE_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_6.pt"  # 'PSNR': 27.186, 'SAM': 14.301831245422363, 'SSIM': 0.8551792502403259}
+#DAE_CHECKPOINT="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae/3dunet_loss12_src_ccccaa_lr5e-05_aug2/checkpoints/model_3dunet_loss12_src_ccccaa_lr5e-05_aug2_0_11000.pt"
+DAE_CHECKPOINT="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae/3dunet_loss12_src_ccccaa_lr2e-05_aug2/checkpoints/model_3dunet_loss12_src_ccccaa_lr2e-05_aug2_0_11000.pt"
+#DAE_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_6.pt"  # 'PSNR': 27.186, 'SAM': 14.3018s31245422363, 'SSIM': 0.8551792502403259}
 #DAE_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_8.pt"  # 'PSNR': 27.526, 'SAM': 14.621066093444824, 'SSIM': 0.8624083399772644}
 #DAE_CHECKPOINT="/share/hariharan/ck696/Decloud/UNet/results/Cond3D_v47_0429_I15O13T12_BlcCCRRAA_LR2e_05_LPB1_GNorm4_MaxDim512/model_12.pt" # 27.60738754272461, 'SAM': 14.049606323242188, 'SSIM': 0.8761096596717834}
 

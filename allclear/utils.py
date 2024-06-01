@@ -96,12 +96,12 @@ def load_image_center_crop(image, channels=None, center_crop=False, size=(256, 2
         data = data[:, offset_y:offset_y + size[1], offset_x:offset_x + size[0]]
     return data
 
-def normalize(array, clip=True, max_value=None, min_percentile=1, max_percentile=99):
+def normalize(array, clip=True, min_value=0, max_value=None, min_percentile=1, max_percentile=99):
     '''
     normalize: normalize a numpy array so all value are between 0 and 1
     '''
     if clip:
-        array = np.clip(array, 0, max_value)
+        array = np.clip(array, min_value, max_value)
     array_min, array_max = np.nanpercentile(array, (min_percentile, max_percentile))
     try:
         normalized_array = (array - array_min) / (array_max - array_min)
@@ -260,14 +260,14 @@ def visualize_one_image(
     plt.show()
 
 
-def preprocess(img, sensor, max_value):
+def preprocess(img, sensor, min_value, max_value):
     """
     Reshape img from (C, H, W) to (H, W, C) and scale the image, then return as numpy array.
     """
     img = img.permute(1, 2, 0).numpy()
     if sensor == "s2_toa":
         img = img[:, :, [3, 2, 1]]
-        img = normalize(img, max_value=max_value, min_percentile=0, max_percentile=100)
+        img = normalize(img, min_value=min_value, max_value=max_value, min_percentile=0, max_percentile=100)
     elif sensor == "s1":
         sar = np.zeros((img.shape[0], img.shape[1], 3))
         sar[...,0] = normalize(img[...,0], clip=False, min_percentile=0, max_percentile=100)  # VV
@@ -280,7 +280,7 @@ def preprocess(img, sensor, max_value):
 
 
 
-def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
+def visualize_batch(data, min_value, max_value, show_fig=False, save_fig=True, args=None):
     """
     Format:
     columns: timestamps
@@ -320,19 +320,19 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
         fig.suptitle(f"ROI: {roi_ids[bid]}  Geolocation: ({geolocations[bid, 0].item():.3f}, {geolocations[bid, 1].item():.3f})", size=14)
         for fid, timestamp in enumerate(timestamps[bid]):
             axs[0, fid].set_title(f"{datetime.fromtimestamp(timestamps[bid, fid].item()).strftime('%Y-%m-%d')}", size=14)
-            loss_mask = preprocess(loss_masks[bid, fid, 0].unsqueeze(0), "loss_mask", max_value)
+            loss_mask = preprocess(loss_masks[bid, fid, 0].unsqueeze(0), "loss_mask", min_value, max_value)
             axs[0, fid].imshow(loss_mask, cmap="gray")
             if fid == 0: axs[0, fid].set_ylabel(f"Loss Masks", size=14)
-            target = preprocess(targets[bid, fid, channels[sensors[0]]], sensors[0], max_value)
+            target = preprocess(targets[bid, fid, channels[sensors[0]]], sensors[0], min_value, max_value)
             axs[1, fid].imshow(target)
             if fid == 0: axs[1, fid].set_ylabel(f"Targets ({sensors[0]})", size=14)
-            output = preprocess(outputs[bid, fid, channels[sensors[0]]], sensors[0], max_value)
+            output = preprocess(outputs[bid, fid, channels[sensors[0]]], sensors[0], min_value, max_value)
             axs[2, fid].imshow(output)
             if fid == 0: axs[2, fid].set_ylabel(f"Outputs ({sensors[0]})", size=14)
             start_channel = 0
             for sid, sensor in enumerate(sensors):
                 sensor_channels = [channel + start_channel for channel in channels[sensor]]
-                input = preprocess(inputs[bid, fid, sensor_channels], sensor, max_value)
+                input = preprocess(inputs[bid, fid, sensor_channels], sensor, min_value, max_value)
                 axs[sid + 3, fid].imshow(input)
                 if fid == 0: axs[sid + 3, fid].set_ylabel(f"Inputs ({sensor})", size=14)
                 start_channel += len(channels[sensor])
@@ -347,5 +347,5 @@ def visualize_batch(data, max_value, show_fig=False, save_fig=True, args=None):
         if save_fig:
             os.makedirs(os.path.join(args.output_dir, args.runname, "vis"), exist_ok=True)
             plt.savefig(
-                os.path.join(args.output_dir, args.runname, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmax{str(max_value)}.png"))
+                os.path.join(args.output_dir, args.runname, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmin{str(min_value)}_Vmax{str(max_value)}.png"))
         plt.close()

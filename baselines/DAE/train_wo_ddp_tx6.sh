@@ -1,31 +1,38 @@
 #!/bin/bash
 
-# Command: bash baselines/DAE/train_wo_ddp.sh
+# Command: bash baselines/DAE/train_wo_ddp_tx6.sh
 
 SCRIPT_PATH="baselines/DAE/main.py"
 #SCRIPT_PATH="experimental_scripts/SimpleUnet/main_v2.py"
 MODE="train"
-LR=1e-5
-TRAIN_BATCH_SIZE=4
+#LR=1e-5
+#LR=2e-5
+LR=5e-5
+TRAIN_BATCH_SIZE=2
 NUM_EPOCHS=1
 MAX_DIM=512
 MODEL_BLOCKS="CCCCAA"
 WANDB=1
 NORM_NUM_GROUPS=4
-NUM_WORKERS=8
+NUM_WORKERS=16
 
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
 AUX_DATA=("cld_shdw")
 TARGET_MODE="s2s"
 CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
-TX=3
+TX=6
 
-RUN_NAME="3dunet_loss12_src_ccccaa_lr1e-05_aug2"
-DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx3_train_20k_v1.json"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr1e-05_aug2"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr2e-05_aug2"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug2"
+#RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug3"
+RUN_NAME="3dunet_loss12_src_ccccaa_lr5e-05_aug3_tx6_s1"
+#DATASET="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_train_2k_v1.json"  # for testing the training code
+DATASET="/share/hariharan/cloud_removal/metadata/v3/s2s_tx6_train_20k_v2.json"
 OUTPUT_DIR="/share/hariharan/cloud_removal/allclear/experimental_scripts/results/ours/dae"
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=3
 python $SCRIPT_PATH \
     --mode $MODE \
     --lr $LR \

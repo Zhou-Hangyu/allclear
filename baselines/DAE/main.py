@@ -135,9 +135,10 @@ if __name__ == "__main__":
         filtered_params = {k: v for k, v in params.items() if "custom_pos_embed.position" not in k}
         model.load_state_dict(filtered_params, strict=False)
 
-    base_bs = 1
-    base_lr = 0.00001
-    lr = base_lr * args.train_bs / base_bs
+    # base_bs = 1
+    # base_lr = 0.00001
+    # lr = base_lr * args.train_bs / base_bs
+    lr = args.lr
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
 
     num_training_steps = len(train_dataloader) * args.num_epochs
@@ -230,7 +231,7 @@ if __name__ == "__main__":
                 total_loss2 = 0
                 total_loss = 0
                 num_samples = 0
-                max_samples = 10
+                max_samples = max(int(10 / (args.tx / 3)), 1)
                 inputs = []
                 outputs = []
                 targets = []
@@ -288,12 +289,13 @@ if __name__ == "__main__":
                         "val_ssim": metrics["SSIM"],}
                 accelerator.log(logs, step=global_step)
 
-                vis_num = 5
+                vis_num = max(int(5 / (args.tx / 3)), 1)
                 vis_data = {"sensors": sensors, "timestamps": timestamps[:vis_num], "geolocations": geolocations[:vis_num], "rois": roi_ids[:vis_num],
                             "outputs": outputs[:vis_num], "targets": targets[:vis_num], "loss_masks": loss_masks[:vis_num], "inputs": inputs[:vis_num]}
-                visualize_batch(vis_data, max_value=1, args=args)
-                visualize_batch(vis_data, max_value=0.3, args=args)
-                visualize_batch(vis_data, max_value=0.1, args=args)
+                visualize_batch(vis_data, min_value=0, max_value=1, args=args)
+                visualize_batch(vis_data, min_value=0, max_value=0.1, args=args)
+                visualize_batch(vis_data, min_value=0, max_value=0.3, args=args)
+                visualize_batch(vis_data, min_value=0.3, max_value=1, args=args)
 
                 model.train()
 

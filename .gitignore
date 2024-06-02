@@ -3,6 +3,8 @@ allclear/baselines/UnCRtainTS
 allclear/baselines/CTGAN/Pretrain
 
 baselines_retraining
+demos_copy
+UnCRtainTS
 
 allclear/baselines/PMAA/checkpoints0515
 allclear/baselines/PMAA/runs29

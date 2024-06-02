@@ -66,6 +66,8 @@ class CRDataset(Dataset):
         and auxiliary sensor data. This class supports various sensors, cloud and shadow masks, and different
         temporal alignments.
 
+        Output Format: (B, C, T, H, W)
+
         Attributes:
             dataset (dict): A dictionary containing dataset information.
             selected_rois (list or str): Regions of interest to be selected from the dataset. Use "all" to select all ROIs.

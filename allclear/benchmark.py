@@ -417,8 +417,8 @@ class BenchmarkEngine:
 
         for data_id, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
-            if data_id == 10:
-                break
+            # if data_id == 10:
+            #     break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
                 data = self.convert_data_format_from_sen12mscrts(data)

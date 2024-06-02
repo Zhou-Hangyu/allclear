@@ -422,7 +422,7 @@ class CTGAN(BaseModel):
 
         # Bands: R, G, B, NIR
         if "Pretrain" in args.ctgan_gen_checkpoint:
-            self.bands = (1,2,3,7)
+            self.bands = (3,2,1,7)
         elif "checkpoints" in args.ctgan_gen_checkpoint:
             self.bands = (3,2,1,7)
         else:

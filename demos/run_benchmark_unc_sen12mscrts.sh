@@ -1,7 +1,6 @@
 #!/bin/bash
-rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
-export CUDA_VISIBLE_DEVICES=0
-# Command: bash demos/zun_benchmark_unc_on_sen12mstrcs.sh
+
+# Command: bash demos/run_benchmark_unc_sen12mscrts.sh
 
 
 SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
@@ -11,8 +10,9 @@ MODEL_NAME="uncrtaints"
 BATCH_SIZE=4
 NUM_WORKERS=4
 DEVICE="cuda:0"
-# SELECTED_ROIS='roi1104208 roi124670 roi623817'
-SELECTED_ROIS='all'
+UNIQUE_ROI=0
+ SELECTED_ROIS='roi1104208 roi124670 roi623817'
+#SELECTED_ROIS='all'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/dae/init"
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
@@ -34,8 +34,8 @@ EXP_NAME="noSAR_1"
 # EXP_NAME="allclear_0531_20k"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
-echo "Running script"
-/share/hariharan/ck696/env_bh/anaconda/envs/allclear/bin/python $SCRIPT_PATH \
+export CUDA_VISIBLE_DEVICES=0
+python $SCRIPT_PATH \
   --dataset-fpath $DATASET_PATH \
   --baseline-base-path $BASELINE_BASE_PATH \
   --model-name $MODEL_NAME \
@@ -55,7 +55,7 @@ echo "Running script"
   --uc-weight-folder $WEIGHT_FOLDER \
   --uc-exp-name $EXP_NAME \
   --uc-s1 1 \
-  --unique-roi 1 \
+  --unique-roi $UNIQUE_ROI \
   --dataset-type "SEN12MS-CR-TS" \
   --sen12mscrts-rescale-method "default" \
   --sen12mscrts-reset-dates "zeros"

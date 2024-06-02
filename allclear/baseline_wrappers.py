@@ -55,7 +55,6 @@ class BaseModel(ABC):
     def forward(self, inputs):
         pass
 
-
 class UnCRtainTS(BaseModel):
     def __init__(self, args):
         super().__init__(args)
@@ -132,13 +131,12 @@ class UnCRtainTS(BaseModel):
         inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)[:,:,:self.S2_BANDS]
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
 
-        # print("input_images", inputs["input_images"].shape)
-        # print("target", inputs["target"].shape)
-        # print("input_cld_shdw", inputs["input_cld_shdw"].shape)
+        if self.args.dataset_type == "AllClear" and "diagonal_1" in self.args.exp_name:
+            inputs["input_images"] = torch.cat([inputs["input_images"][:,:,2:], inputs["input_images"][:,:,:2]], dim=2)
 
         return inputs
 
-    def forward(self, inputs):
+    def forward(self, inputs, batch_id=None):
         """Refer to `prepare_data_multi()`
         Shapes:
             - input_imgs: (B, T, C, H, W)
@@ -149,13 +147,7 @@ class UnCRtainTS(BaseModel):
         input_imgs = inputs["input_images"]
         target_imgs = inputs["target"]
         masks = inputs["input_cld_shdw"]
-        # capture_dates = inputs["timestamps"]
-        # dates = capture_dates - self.S1_LAUNCH        
         dates = inputs["time_differences"]
-
-        # print("input_images", input_imgs.shape)
-        # print("target", target_imgs.shape)
-
         model_inputs = {"A": input_imgs, "B": target_imgs, "dates": dates, "masks": masks}
 
         with torch.no_grad():
@@ -172,26 +164,9 @@ class UnCRtainTS(BaseModel):
             out = out[:, :, : self.S2_BANDS, ...]
             # TODO: add uncertainty calculation and results saving.
 
-        if self.args.draw_vis:
-            inputs["output"] = out.cpu()
-            # benchmark_visualization(inputs, self.args)
-            # # save the output and input images in numpy format
-            # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
-            # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"
-            # target_dir = "/share/hariharan/ck696/allclear/experiments/target.npy"
-            # mask_dir = "/share/hariharan/ck696/allclear/experiments/mask.npy"
-            # import numpy as np
-            # np.save(input_dir, input_imgs.cpu().numpy())
-            # np.save(output_dir, out.cpu().numpy())
-            # np.save(target_dir, target_imgs.cpu().numpy())
-            # np.save(mask_dir, masks.cpu().numpy())
-
-            # print(input_imgs.max(), input_imgs.min())
-            # print(out.max(), out.min())
-            # print(target_imgs.max(), target_imgs.min())
-            # print(inputs.keys())
-            # torch.save(inputs, "/share/hariharan/ck696/allclear/experiments/inputs.pth")
-            # assert 0 == 1
+        # if self.args.draw_vis:
+        #     inputs["output"] = out.cpu()
+        #     benchmark_visualization(inputs, self.args)
             
         return {"output": out, "variance": var}
 
@@ -562,6 +537,32 @@ class PMAA(BaseModel):
         x = inputs["input_images"] * 2 - 1
         output, _, _ = self.model(x)
         output = output.unsqueeze(1) * 0.5 + 0.5
+
+        inputs["output"] = output
+
+        if self.args.draw_vis:
+            benchmark_visualization(inputs, self.args)
+
+            # inputs["output"] = out.cpu()
+            # benchmark_visualization(inputs, self.args)
+            # # save the output and input images in numpy format
+            # input_dir = "/share/hariharan/ck696/allclear/experiments/input.npy"
+            # output_dir = "/share/hariharan/ck696/allclear/experiments/output.npy"
+            # target_dir = "/share/hariharan/ck696/allclear/experiments/target.npy"
+            # mask_dir = "/share/hariharan/ck696/allclear/experiments/mask.npy"
+            # import numpy as np
+            # np.save(input_dir, input_imgs.cpu().numpy())
+            # np.save(output_dir, out.cpu().numpy())
+            # np.save(target_dir, target_imgs.cpu().numpy())
+            # np.save(mask_dir, masks.cpu().numpy())
+
+            # print(input_imgs.max(), input_imgs.min())
+            # print(out.max(), out.min())
+            # print(target_imgs.max(), target_imgs.min())
+            # print(inputs.keys())
+            torch.save(inputs, "/share/hariharan/ck696/allclear/experiments/pmaa_inputs.pth")
+            assert 0 == 1
+
         return {"output": output}
 
 class DiffCR(BaseModel):

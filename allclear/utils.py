@@ -357,53 +357,89 @@ def visualize_batch(data, min_value, max_value, show_fig=False, save_fig=True, a
                 os.path.join(args.output_dir, args.runname, "vis", f"EP{str(args.epoch)}_S{str(args.global_step)}_B{str(bid)}_Vmin{str(min_value)}_Vmax{str(max_value)}.png"))
         plt.close()
 
+def benchmark_visualization(inputs, args, metrics=None):
+    """ Visualize the input, target, and output images for benchmarking.
+    Args:
+        inputs: Dictionary containing the following keys:
+            - input_images: Input images (B, T, C, H, W)
+            - target: Target images (B, C, H, W)
+            - output: Output images (B, C, H, W)
 
-def benchmark_visualization(inputs, args):
+    Returns:
+    """
 
     inputx = inputs["input_images"].cpu()
     target = inputs["target"].cpu()
     output = inputs["output"].cpu()
 
-    # print(inputs["roi"])
-    # print(inputs["latlong"])
+    input_vis_bands = [3,2,1]
+    target_vis_bands = [3,2,1]
+
+    if args.dataset_type == "SEN12MS-CR-TS" and args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
+        input_vis_bands = [5,4,3]
+        target_vis_bands = [3,2,1]
+    elif args.dataset_type == "AllClear" and args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
+        input_vis_bands = [5,4,3]
+        target_vis_bands = [3,2,1]
+    # elif args.dataset_type == "CTGAN":
+    #     input_vis_bands = [0,1,2]
+    #     target_vis_bands = [0,1,2]
+    # else:
+    #     raise ValueError("Invalid dataset type or model name")
     
     for batch_id in range(inputx.size(0)):
-    
-        for value_multiplier in [1, 3, 4]:
-            
-            fig, axes = plt.subplots(1,5, figsize=(10,3))
 
-            # print(inputs["roi"][batch_id])
-            # print(inputs["latlong"][batch_id])
-            fig.suptitle(f"""ROI: {inputs["roi"][batch_id]} |  Geolocation: ({inputs["latlong"][0][batch_id].item():.3f}, {inputs["latlong"][1][batch_id].item():.3f})""", 
-                        size=12, 
-                        y=.99)
+        data_id = args.eval_iter*args.batch_size + batch_id
+    
+        for value_multiplier in [2, 5]:
+            
+            fig, axes = plt.subplots(1,5, figsize=(10,3), dpi=200)
+
+            try:
+                if metrics is not None:
+                    fig.suptitle(f"""ROI: {inputs["roi"][batch_id]} |  Geolocation: ({inputs["latlong"][0][batch_id].item():.3f}, {inputs["latlong"][1][batch_id].item():.3f}) | PSNR: {metrics.psnrs[batch_id].item():.2f} | SSIM: {metrics.ssims[batch_id].item():.2f} | SAM: {metrics.sams[batch_id].item():.2f} | MAE: {metrics.maes[batch_id].item():.2f}""",
+                        size=12, y=.99)
+                else:                  
+                    fig.suptitle(f"""ROI: {inputs["roi"][batch_id]} |  Geolocation: ({inputs["latlong"][0][batch_id].item():.3f}, {inputs["latlong"][1][batch_id].item():.3f})""", 
+                        size=12, y=.99)
+            except:
+                if metrics is not None:
+                    fig.suptitle(f"""Dataset: {args.dataset_type} | Experiment: {args.exp_name} \n Data id: {data_id} | PSNR: {metrics.psnrs[batch_id].item():.2f} | SSIM: {metrics.ssims[batch_id].item():.2f} | SAM: {metrics.sams[batch_id].item():.2f} | MAE: {metrics.maes[batch_id].item():.2f}""", size=12, y=.99)
+                else:
+                    fig.suptitle(f"""Dataset: {args.dataset_type} | Experiment: {args.exp_name} \n Data id: {data_id}""", size=12, y=.99)
+                pass 
         
             for frame_id in range(0,3):
                 
                 ax = axes[frame_id]
-                x = inputx[batch_id][frame_id][[3,2,1]]
+                x = inputx[batch_id][frame_id][input_vis_bands]
                 x = np.transpose(x, (1,2,0))
                 x = x * value_multiplier
                 x = np.clip(x, 0, 1)
-                ax.set_title("Input \n" + datetime.fromtimestamp(inputs["timestamps"][batch_id, frame_id].item()).strftime('%Y-%m-%d'))
+                try:
+                    ax.set_title("Input \n" + datetime.fromtimestamp(inputs["timestamps"][batch_id, frame_id].item()).strftime('%Y-%m-%d'))
+                except:
+                    ax.set_title(f"Input t={frame_id+1}")
                 ax.imshow(x)
             
             ax = axes[3]
-            x = output[batch_id][0][[3,2,1]]
+            x = output[batch_id][0][target_vis_bands]
             x = np.transpose(x, (1,2,0))
             x = x * value_multiplier
             x = np.clip(x, 0, 1)
             ax.imshow(x)
-            ax.set_title("Prediction \n")
+            ax.set_title("Prediction")
             
             ax = axes[4]
-            x = target[batch_id][0][[3,2,1]]
+            x = target[batch_id][0][target_vis_bands]
             x = np.transpose(x, (1,2,0))
             x = x * value_multiplier
             x = np.clip(x, 0, 1)
             ax.imshow(x)
-            ax.set_title("Target \n" + datetime.fromtimestamp(inputs["target_timestamps"][frame_id].item()).strftime('%Y-%m-%d'))
+            try:
+                ax.set_title("Target \n" + datetime.fromtimestamp(inputs["target_timestamps"][frame_id].item()).strftime('%Y-%m-%d'))
+            except:
+                ax.set_title("Target")
         
             for ax in axes.flatten():
                 ax.set_xticks([])
@@ -413,6 +449,13 @@ def benchmark_visualization(inputs, args):
             plt.pause(0.1)
     
             if args.model_name.lower() == "uncrtaints":
-                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization/vm{value_multiplier}__{inputs["roi"][batch_id]}__{args.model_name}_[{args.experiment_name}].png""")
-                plt.pause(0.1)
-                plt.close()
+                fpath = f"""/share/hariharan/cloud_removal/results/visualization-unc-{args.dataset_type}/"""
+                if not os.path.exists(fpath):
+                    os.makedirs(fpath)
+                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-unc-{args.dataset_type}/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
+            elif args.model_name.lower() == "pmaa":
+                if not os.path.exists(f"/share/hariharan/cloud_removal/results/visualization-pmaa"):
+                    os.makedirs(f"/share/hariharan/cloud_removal/results/visualization-pmaa")
+                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-pmaa/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
+            plt.pause(0.1)
+            plt.close()

@@ -20,11 +20,8 @@ from allclear.utils import plot_lulc_metrics
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
 
-
-
 from allclear import CRDataset
 from allclear import UnCRtainTS, LeastCloudy, Mosaicing, DAE, CTGAN, UTILISE, PMAA, DiffCR
-
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -297,6 +294,8 @@ class BenchmarkEngine:
                                     n_input_samples=self.args.tx, 
                                     rescale_method=self.args.sen12mscrts_rescale_method,
                                     )
+            
+            return DataLoader(dt_test, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
         elif self.args.dataset_type == "CTGAN":
 
@@ -325,7 +324,6 @@ class BenchmarkEngine:
                                      shuffle=False, 
                                      num_workers=self.args.num_workers,
                                      drop_last=False)
-
 
             return test_loader
         
@@ -372,7 +370,10 @@ class BenchmarkEngine:
         inputs = {}
         real_A, real_B, image_names = batch
 
+        # real_A = [IMG1, IMG2, IMg3] 
+        # IMG: bs x c x h x w
         input_images = torch.stack(real_A, dim=2) * 0.5 + 0.5
+        # Input_images: bs x c x t x h x w
         target = real_B.unsqueeze(2) * 0.5 + 0.5
 
         bs, nc, ct, nw, nh = input_images.shape
@@ -390,7 +391,7 @@ class BenchmarkEngine:
             "target_cld_shdw": target_cld_shdw,
             "dw": None,
             "target_dw": None,
-            "time_differences": torch.zeros((bs, 3)),
+            "time_differences": None,
         }
 
         return inputs
@@ -417,7 +418,7 @@ class BenchmarkEngine:
 
         for data_id, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
-            if data_id == 10:
+            if data_id == 100:
                 break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":

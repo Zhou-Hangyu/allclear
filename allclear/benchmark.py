@@ -297,10 +297,39 @@ class BenchmarkEngine:
                                     n_input_samples=self.args.tx, 
                                     rescale_method=self.args.sen12mscrts_rescale_method,
                                     )
+        
+        elif self.args.dataset_type == "CTGAN":
+
+            if "ck696" in os.getcwd():
+                sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
+            else:
+                sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA")
+
+            from dataset_new import Sen2_MTC
             
-            return DataLoader(dt_test, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
-    
-    def convert_data_format(self, batch):
+            class CTGAN_OPT:
+                def __init__(self):
+                    self.root = "/share/hariharan/ck696/allclear/baselines/PMAA/data"
+                    self.test_mode = "test"
+                
+                def __iter__(self):
+                    return iter(self.__dict__.items())
+                
+                def __getitem__(self, key):
+                    return self.__dict__[key]
+
+            opt = CTGAN_OPT()
+            test_data = Sen2_MTC(opt, mode="test")
+            test_loader = DataLoader(test_data, 
+                                     batch_size=self.args.batch_size,
+                                     shuffle=False, 
+                                     num_workers=self.args.num_workers,
+                                     drop_last=False)
+
+
+            return test_loader
+        
+    def convert_data_format_from_sen12mscrts(self, batch):
         # print(batch.keys())
 
         s1 = torch.stack(batch["input"]["S1"], dim=1)
@@ -336,6 +365,37 @@ class BenchmarkEngine:
         }
 
         return inputs
+    
+    def convert_data_format_from_ctgan(self, batch):
+
+        bands = [3,2,1,7]
+        inputs = {}
+        real_A, real_B, image_names = batch
+
+        input_images = torch.stack(real_A, dim=2) * 0.5 + 0.5
+        target = real_B.unsqueeze(2) * 0.5 + 0.5
+
+        bs, nc, ct, nw, nh = input_images.shape
+        input_images_placeholder = torch.zeros((bs, 15, 3, 256, 256))
+        target_placeholder = torch.zeros((bs, 15, 1, 256, 256))
+        input_images_placeholder[:,bands,...] = input_images
+        target_placeholder[:,bands,...] = target
+        input_cld_shdw = torch.zeros((bs, 2, ct, nw, nh))
+        target_cld_shdw = torch.zeros((bs, 2, 1, nw, nh))
+
+        inputs = {
+            "input_images": input_images_placeholder,
+            "input_cld_shdw": input_cld_shdw,
+            "target": target_placeholder,
+            "target_cld_shdw": target_cld_shdw,
+            "dw": None,
+            "target_dw": None,
+            "time_differences": torch.zeros((bs, 3)),
+        }
+
+        return inputs
+
+
 
     def run(self):
         print("Running Benchmark...")
@@ -361,7 +421,10 @@ class BenchmarkEngine:
                 break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
-                data = self.convert_data_format(data)
+                data = self.convert_data_format_from_sen12mscrts(data)
+
+            elif self.args.dataset_type == "CTGAN":
+                data = self.convert_data_format_from_ctgan(data)
 
             with torch.no_grad():
                 data = self.model.preprocess(data)
@@ -458,7 +521,8 @@ def parse_arguments():
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
-    parser.add_argument("--dataset-type", type=str, default="AllClear", choices=["AllClear", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
+    parser.add_argument("--dataset-type", type=str, default="AllClear", 
+                        choices=["AllClear", "CTGAN", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     # parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
     parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
@@ -504,6 +568,10 @@ def parse_arguments():
     sen12mscrts_args = parser.add_argument_group("SEN12MSCRTS Arguments")
     sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
     sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")
+
+    ctgan_args = parser.add_argument_group("CTGAN Arguments")
+    # sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
+    # sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")
 
     args = parser.parse_args()
     return args

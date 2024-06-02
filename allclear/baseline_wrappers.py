@@ -535,10 +535,6 @@ class PMAA(BaseModel):
         self.model = self.model.to(self.device)
         self.model.eval()
 
-        # self.bands = (3,2,1,7) if "pmaa_old" not in checkpoint else (3,2,1)
-        # self.input_bands = (1,2,3,7)
-        # self.output_bands = (1,2,3,7) if "pmaa_old" not in checkpoint else (1,2,3)
-
         self.input_bands = (3,2,1,7)
         self.output_bands = (3,2,1,7) if "pmaa_old" not in checkpoint else (3,2,1)
 
@@ -550,15 +546,9 @@ class PMAA(BaseModel):
 
     def preprocess(self, inputs):
 
-        # print("input_images", inputs["input_images"].shape)
-        # print("target", inputs["target"].shape)
-
         inputs["input_images"] = inputs["input_images"][:,self.input_bands].permute(0,2,1,3,4).to(self.device)
         inputs["target"] = inputs["target"][:,self.output_bands].permute(0,2,1,3,4).to(self.device)
 
-        # print("input_images", inputs["input_images"].shape)
-        # print("target", inputs["target"].shape)
-        # print(inputs.keys())
         return inputs
 
     def forward(self, inputs):
@@ -569,12 +559,9 @@ class PMAA(BaseModel):
             - masks: (B, T, H, W)
             - dates: (B, T)
         """
-        # Model I/O (bs, t, c, h, w)
         x = inputs["input_images"] * 2 - 1
         output, _, _ = self.model(x)
-        # print("output", output.shape)
         output = output.unsqueeze(1) * 0.5 + 0.5
-        # print("output", output.shape)
         return {"output": output}
 
 class DiffCR(BaseModel):

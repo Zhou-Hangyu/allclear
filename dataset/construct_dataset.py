@@ -13,17 +13,18 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
         sensors (dict of pd.DataFrame): Dict of DataFrames containing metadata for all sensors.
         main_sensor (str): Name of the main sensor.
         tx (int): The number of images to find surrounding each clear image for testing, or in each set for training. Default is 3.
-        mode (str): Mode of operation, either 'testing' or 'training'. Default is 'testing'.
+        mode (str): Mode of operation, either 's2p' for sequence-to-point or 's2s' for sequence-to-sequence. Default is 's2p'.
 
     Returns:
         dict: A dictionary containing grouped image information. Each key is an ID, and the value is a dictionary with 'roi' and sensor data.
-              For testing:
+            ID has the format of `{roi}_{main_sensor_start_date}_{main_sensor_end_date}` for uniqueness.
+              For s2p:
               {
                   ID1: {'roi': ('roixxxx', (latitude, longitude)), 'target': [(timestamp, image_file_path)],
                         'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...], ...},
                   ID2: {...}, ...
               }
-              For training:
+              For s2s:
               {
                   ID1: {'roi': ('roixxxx', (latitude, longitude)),
                         'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...], ...},
@@ -32,7 +33,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
 
     Raises:
         ValueError: If provided tx is less than or equal to 0.
-                    If mode is not 'testing' or 'training'.
+                    If mode is not 's2p' or 's2s'.
 
     Note:
         The input DataFrame must contain the following columns: 'roi', 'capture_date',
@@ -61,7 +62,6 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
     main_sensor_df['clear_image_flag'] = main_sensor_df['total_cloud_shadow'] < 10
 
     output_dict = {}
-    id_counter = 0
 
     if mode == 's2p':
         for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc=f"Processing ROIs ({mode})"):
@@ -70,13 +70,14 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
             for df_idx in range(N - tx):
                 if df_idx in used_patch_ids:
                     continue
-                sub_sequence = main_sensor_per_roi_df.iloc[df_idx:df_idx + tx + 1]
+                sub_sequence = main_sensor_per_roi_df.iloc[df_idx:df_idx + tx + 1]  # +1 for target (tx is the number of inputs)
                 if any(idx in used_patch_ids for idx in sub_sequence.index):
                     continue
-                if 1 not in sub_sequence['clear_image_flag'].values[1:-1]:  # make sure there is clear image within the time series
+                middle_sub_sequence = sub_sequence.iloc[1:-1]  # target has to be in the middle for interpolation
+                if 1 not in middle_sub_sequence['clear_image_flag'].values:  # make sure there is clear image within the time series
                     continue
                 # If there is multiple clear images in the middle, randomly select one
-                target = sub_sequence[sub_sequence['clear_image_flag'] == 1].sample(1)
+                target = middle_sub_sequence[middle_sub_sequence['clear_image_flag'] == 1].sample(1)
                 input_sequence = sub_sequence[sub_sequence['capture_date'] != target['capture_date'].values[0]]
                 assert not any(idx in used_patch_ids for idx in input_sequence.index), print(input_sequence.index, used_patch_ids)
                 assert not any(idx in used_patch_ids for idx in target.index)
@@ -86,11 +87,12 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                 assert len(input_sequence) == tx
                 entry = {
                     'roi': (roi, (target['latitude'].values[0], target['longitude'].values[0])),
-                    'target': [(target['capture_date'].dt.strftime('%Y-%m-%d').values[0],
+                    'target': [(target['capture_date'].dt.strftime('%Y-%m-%d %H:%M:%S').values[0],
                                 target['image_file_path'].values[0])],
-                    main_sensor: [(date.strftime('%Y-%m-%d'), path) for date, path in
+                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
                                   zip(input_sequence['capture_date'], input_sequence['image_file_path'])]
                 }
+                uid = f"{roi}_{input_sequence['capture_date'].min().strftime('%Y-%m-%d')}_{input_sequence['capture_date'].max().strftime('%Y-%m-%d')}"
                 tx_min, tx_max = input_sequence['capture_date'].min(), input_sequence['capture_date'].max()
                 for sensor_name, sensor_df in sensors.items():
                     if sensor_name == main_sensor:
@@ -101,11 +103,10 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                         (sensor_roi_df['capture_date'] >= tx_min) & (sensor_roi_df['capture_date'] <= tx_max)
                         ]
                     entry[sensor_name] = [
-                        (date.strftime('%Y-%m-%d'), path) for date, path in
+                        (date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
                         zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
                     ]
-                output_dict[id_counter] = entry
-                id_counter += 1
+                output_dict[uid] = entry
     elif mode == 's2s':
         for roi, roi_df in tqdm(main_sensor_df.groupby('roi'), desc=f"Processing ROIs ({mode})"):
             sets_count = len(roi_df) // tx
@@ -113,9 +114,10 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                 set_main_sensor_df = roi_df.iloc[i * tx:(i + 1) * tx]
                 entry = {
                     'roi': (roi, (set_main_sensor_df.iloc[0]['latitude'], set_main_sensor_df.iloc[0]['longitude'])),
-                    main_sensor: [(date.strftime('%Y-%m-%d'), path) for date, path in
+                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
                                   zip(set_main_sensor_df['capture_date'], set_main_sensor_df['image_file_path'])]
                 }
+                id = f"{roi}_{set_main_sensor_df['capture_date'].min().strftime('%Y-%m-%d')}_{set_main_sensor_df['capture_date'].max().strftime('%Y-%m-%d')}"
                 tx_min, tx_max = set_main_sensor_df['capture_date'].min(), set_main_sensor_df['capture_date'].max()
                 for sensor_name, sensor_df in sensors.items():
                     if sensor_name == main_sensor:
@@ -126,11 +128,10 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                         (sensor_roi_df['capture_date'] >= tx_min) & (sensor_roi_df['capture_date'] <= tx_max)
                         ]
                     entry[sensor_name] = [
-                        (date.strftime('%Y-%m-%d'), path) for date, path in
+                        (date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
                         zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
                     ]
-                output_dict[id_counter] = entry
-                id_counter += 1
+                output_dict[id] = entry
 
     return output_dict
 

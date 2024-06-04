@@ -153,6 +153,8 @@ class CRDataset(Dataset):
                 "dw": [1],
             }
 
+        self.dataset_ids = list(dataset.keys())
+
     def __len__(self):
         return len(self.dataset)
 
@@ -222,11 +224,13 @@ class CRDataset(Dataset):
     def extract_date(path):
         parts = path.split('_')
         date_str = parts[-4] + '-' + parts[-3] + '-' + parts[-2]
-        return datetime.strptime(date_str, '%Y-%m-%d')
+        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
 
     def __getitem__(self, idx):
         # with Profile() as prof:
-        sample = self.dataset[str(idx)]
+        # sample = self.dataset[str(idx)]
+        data_id = self.dataset_ids[idx]
+        sample = self.dataset[data_id]
         roi = sample["roi"][0]
         latlong = sample["roi"][1]
         inputs_cld_shdw = None
@@ -240,7 +244,7 @@ class CRDataset(Dataset):
             sensor_inputs = sample[sensor]
             for sensor_input in sensor_inputs:
                 timestamp, fpath = sensor_input
-                timestamp = datetime.strptime(timestamp, "%Y-%m-%d")
+                timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
                 if not os.path.exists(
                         fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
                     fpath = fpath.replace("/scratch/allclear/dataset_v3/",
@@ -316,7 +320,7 @@ class CRDataset(Dataset):
                 if not os.path.exists(dw_fpath):
                     dw_fpath = fpath.rsplit('/', 1)[0].rsplit('/', 1)[0].rsplit('/', 1)[0] + "/2022_*/dw/*.tif"
                     dw_fpaths = glob.glob(dw_fpath)
-                    given_date = datetime.strptime(timestamp, "%Y-%m-%d") if isinstance(timestamp, str) else timestamp
+                    given_date = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") if isinstance(timestamp, str) else timestamp
                     dw_fpath = min(dw_fpaths, key=lambda path: abs(self.extract_date(path) - given_date))
                 # check if the fiilw is ends with .tif
                 if not dw_fpath.endswith("tif"):
@@ -416,7 +420,7 @@ class CRDataset(Dataset):
             if self.target_mode == "s2p":
                 target_image = inputs["target"][0][1]
                 target_image = target_image.unsqueeze(1)
-                target_timestamps = datetime.strptime(inputs["target"][0][0], "%Y-%m-%d").timestamp()
+                target_timestamps = datetime.strptime(inputs["target"][0][0], "%Y-%m-%d %H:%M:%S").timestamp()
             elif self.target_mode == "s2s":
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
                 target_timestamps = timestamps

@@ -1,7 +1,7 @@
 #!/bin/bash
 rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
-export CUDA_VISIBLE_DEVICES=0
-# Command: bash demos/zun_benchmark_unc_on_sen12mstrcs.sh
+export CUDA_VISIBLE_DEVICES=3
+# Command: bash demos/run_benchmark_dae.sh
 
 
 SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
@@ -56,6 +56,6 @@ echo "Running script"
   --uc-exp-name $EXP_NAME \
   --uc-s1 1 \
   --unique-roi 1 \
-  --dataset-type "SEN12MS-CR-TS" \
+  --dataset-type $"SEN12MS-CR-TS" \
   --sen12mscrts-rescale-method "default" \
-  --sen12mscrts-reset-dates "zeros"
+  --sen12mscrts-reset-dates "none"

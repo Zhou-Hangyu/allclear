@@ -15,16 +15,13 @@ else:
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
-from allclear.utils import plot_lulc_metrics
+from allclear.utils import plot_lulc_metrics, benchmark_visualization
 
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
 
-
-
 from allclear import CRDataset
 from allclear import UnCRtainTS, LeastCloudy, Mosaicing, DAE, CTGAN, UTILISE, PMAA, DiffCR
-
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -297,6 +294,8 @@ class BenchmarkEngine:
                                     n_input_samples=self.args.tx, 
                                     rescale_method=self.args.sen12mscrts_rescale_method,
                                     )
+            
+            return DataLoader(dt_test, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
         elif self.args.dataset_type == "CTGAN":
 
@@ -326,42 +325,50 @@ class BenchmarkEngine:
                                      num_workers=self.args.num_workers,
                                      drop_last=False)
 
-
             return test_loader
         
     def convert_data_format_from_sen12mscrts(self, batch):
-        # print(batch.keys())
 
-        s1 = torch.stack(batch["input"]["S1"], dim=1)
-        s2 = torch.stack(batch["input"]["S2"], dim=1)
+        print("Convert data format from SEN12MS-CR-TS")
+    
+        bs = len(batch['input']['S2'][0])
 
-        input_images = torch.cat([s1, s2], dim=2)
-        input_cld_shdw = torch.stack(batch["input"]["masks"], dim=1).unsqueeze(1).repeat(1,2,1,1,1)
+        in_S2       = batch['input']['S2']
+        in_S2_td    = batch['input']['S2 TD']
+        if bs>1: in_S2_td = torch.stack((in_S2_td)).T
+        in_m        = torch.stack(batch['input']['masks']).swapaxes(0,1)
+        in_m = in_m.unsqueeze(1).repeat(1,2,1,1,1)
+        target_S2   = batch['target']['S2']
+        y           = torch.cat(target_S2,dim=0).unsqueeze(1)
+        out_m = torch.zeros_like(in_m)[:,:,0:1,:,:]
 
-        s1 = torch.stack(batch["target"]["S1"], dim=1)
-        s2 = torch.stack(batch["target"]["S2"], dim=1)
+        in_S1 = batch['input']['S1']
+        in_S1_td = batch['input']['S1 TD']
+        if bs>1: in_S1_td = torch.stack((in_S1_td)).T
 
-        target = torch.cat([s1, s2], dim=2)
-        target_cld_shdw = torch.stack(batch["target"]["masks"], dim=1).unsqueeze(1).repeat(1,2,1,1,1)
+        if self.args.uc_exp_name == "diagonal_1":
+            x     = torch.cat((torch.stack(in_S1,dim=1), 
+                            torch.stack(in_S2,dim=1)),dim=2)
+        else:
+            x     = torch.cat((torch.stack(in_S2,dim=1), 
+                            torch.stack(in_S1,dim=1)),dim=2)
+        dates = torch.stack((in_S1_td.clone().detach(),in_S2_td.clone().detach())).float().mean(dim=0)
 
-        dates = torch.stack((torch.stack(batch['input']['S1 TD']),
-                             torch.stack(batch['input']['S2 TD']))).float().mean(dim=0)
-        
-        if self.args.sen12mscrts_reset_dates == "zeros":
+        if self.args.sen12mscrts_reset_datetime == "zeros":
             dates = torch.zeros_like(dates)
-        elif self.args.sen12mscrts_reset_dates == "min":
-            dates = dates - dates.min()
-        elif self.args.sen12mscrts_reset_dates == "none":
-            dates = dates
+
+        # print(f"Input Images: {x.shape}")
+        # print(f"Target Images: {y.shape}")
+
 
         inputs = {
-            "input_images": input_images.permute(0,2,1,3,4),
-            "input_cld_shdw": input_cld_shdw,
-            "target": target.permute(0,2,1,3,4),
-            "target_cld_shdw": target_cld_shdw,
-            "dw": None,
+            "input_images": x.permute(0,2,1,3,4),   # bs x c x t x h x w    
+            "input_cld_shdw": in_m,                 # bs x c x t x h x w
+            "target": y.permute(0,2,1,3,4),         # bs x c x t x h x w
+            "target_cld_shdw": out_m,               # bs x c x t x h x w
+            "dw": None,     
             "target_dw": None,
-            "time_differences": dates
+            "time_differences": dates               # bs x t
         }
 
         return inputs
@@ -372,7 +379,10 @@ class BenchmarkEngine:
         inputs = {}
         real_A, real_B, image_names = batch
 
+        # real_A = [IMG1, IMG2, IMg3] 
+        # IMG: bs x c x h x w
         input_images = torch.stack(real_A, dim=2) * 0.5 + 0.5
+        # Input_images: bs x c x t x h x w
         target = real_B.unsqueeze(2) * 0.5 + 0.5
 
         bs, nc, ct, nw, nh = input_images.shape
@@ -390,7 +400,7 @@ class BenchmarkEngine:
             "target_cld_shdw": target_cld_shdw,
             "dw": None,
             "target_dw": None,
-            "time_differences": torch.zeros((bs, 3)),
+            "time_differences": None,
         }
 
         return inputs
@@ -415,9 +425,10 @@ class BenchmarkEngine:
         lulc_metrics_all = {i: {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []} for i in range(9)}
 
 
-        for data_id, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
+        for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
-            # if data_id == 10:
+            self.args.eval_iter = eval_iter
+            # if self.args.eval_iter == 20:
             #     break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
@@ -450,6 +461,9 @@ class BenchmarkEngine:
             else:
                 metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device)
             batch_results = metrics.evaluate_aggregate()
+
+            data["output"] = outputs["output"]
+            benchmark_visualization(data, self.args, metrics=metrics)
 
             # Store per-batch metrics
             for key in per_batch_metrics:
@@ -532,6 +546,7 @@ def parse_arguments():
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
     parser.add_argument("--unique-roi", type=int, default=0, help="0 uses all metadata, 1 uses only unique ROI")
     parser.add_argument("--draw-vis", type=int, default=0, help="0 dont draw, 1 draw results")
+    parser.add_argument("--exp-name", type=str, default="exp of no name", help="Experiment name")
     
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
@@ -567,8 +582,8 @@ def parse_arguments():
     
     sen12mscrts_args = parser.add_argument_group("SEN12MSCRTS Arguments")
     sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
-    sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")
-
+    sen12mscrts_args.add_argument("--sen12mscrts-reset-datetime", type=str, default="none", choices=["none", "zeros", "min"], help="Reset datetime for SEN12MSCRTS")
+    
     ctgan_args = parser.add_argument_group("CTGAN Arguments")
     # sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
     # sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")

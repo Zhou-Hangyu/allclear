@@ -18,6 +18,8 @@ def extract_file_paths(dataset):
                 for item in value:
                     if isinstance(item, list) and len(item) == 2 and isinstance(item[1], str):
                         file_paths.append(item[1])
+                        if "s2_toa" in item[1]:
+                            file_paths.append(item[1].replace("s2_toa", "cld_shdw"))
     return file_paths
 
 SELECTED_FILES_FNAME = "s2p_tx3_train_19k_d10k_v3.json"

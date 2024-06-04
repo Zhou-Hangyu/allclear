@@ -2,69 +2,12 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 import json
-import multiprocessing as mp
+from multiprocessing import Pool
 
-def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
-    """
-    Constructs a dataset for cloud removal from satellite images. The function pairs
-    each clear image with surrounding cloudy images for testing or generates sets
-    of images for training. It ensures no cloudy image is reused across different groups.
-
-    Args:
-        sensors (dict of pd.DataFrame): Dict of DataFrames containing metadata for all sensors.
-        main_sensor (str): Name of the main sensor.
-        tx (int): The number of images to find surrounding each clear image for testing, or in each set for training. Default is 3.
-        mode (str): Mode of operation, either 's2p' for sequence-to-point or 's2s' for sequence-to-sequence. Default is 's2p'.
-
-    Returns:
-        dict: A dictionary containing grouped image information. Each key is an ID, and the value is a dictionary with 'roi' and sensor data.
-            ID has the format of `{roi}_{main_sensor_start_date}_{main_sensor_end_date}` for uniqueness.
-              For s2p:
-              {
-                  ID1: {'roi': ('roixxxx', (latitude, longitude)), 'target': [(timestamp, image_file_path)],
-                        'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...], ...},
-                  ID2: {...}, ...
-              }
-              For s2s:
-              {
-                  ID1: {'roi': ('roixxxx', (latitude, longitude)),
-                        'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...], ...},
-                  ID2: {...}, ...
-              }
-
-    Raises:
-        ValueError: If provided tx is less than or equal to 0.
-                    If mode is not 's2p' or 's2s'.
-
-    Note:
-        The input DataFrame must contain the following columns: 'roi', 'capture_date',
-        'cloud_percentage_30', 'shadow_percentage', and any other necessary columns to
-        calculate the cloud and shadow coverage. The function expects the 'capture_date'
-        to be convertible to a pandas datetime format, and it relies on chronological
-        sorting of these dates to function correctly. It is also assumed that each row
-        in the DataFrame has a unique combination of 'roi', 'capture_date', and 'image_file_path'.
-    """
-    if tx <= 0:
-        raise ValueError("tx must be greater than 0")
-    def preprocess(sensor_df):
-        sensor_df = sensor_df[sensor_df.nan_percentage == 0]
-        sensor_df = sensor_df.drop_duplicates(subset=["capture_date", "roi"])
-        sensor_df['capture_date'] = pd.to_datetime(sensor_df['capture_date'], format="%Y-%m-%d %H:%M:%S")
-        sensor_df.sort_values(by='capture_date', inplace=True)
-        return sensor_df
-
-    main_sensor_df = sensors[main_sensor].copy()
-    main_sensor_df = preprocess(main_sensor_df)
-    if main_sensor == 's2_toa':
-        # filter out images without cloud and shadow information or with nan values in their cloud and shadow masks
-        main_sensor_df = main_sensor_df[main_sensor_df['cloud_percentage_30'] != -1]
-        main_sensor_df = main_sensor_df[main_sensor_df['cld_shdw_nan_percentage'] == 0]
-    main_sensor_df['total_cloud_shadow'] = main_sensor_df['cloud_percentage_30'] + main_sensor_df['shadow_percentage_30']
-    main_sensor_df['clear_image_flag'] = main_sensor_df['total_cloud_shadow'] < 10
-
+def construct_dataset_chunk(args):
+    main_sensor_chunk, main_sensor, tx, mode, sensors = args
     output_dict = {}
-
-    for roi, main_sensor_per_roi_df in tqdm(main_sensor_df.groupby('roi'), desc=f"Processing ROIs ({mode})"):
+    for roi, main_sensor_per_roi_df in tqdm(main_sensor_chunk.groupby('roi'), desc=f"Processing ROIs ({mode})"):
         if mode == 's2p':
             N = len(main_sensor_per_roi_df)
             used_patch_ids = set()
@@ -88,10 +31,8 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                 assert len(input_sequence) == tx
                 entry = {
                     'roi': (roi, (target['latitude'].values[0], target['longitude'].values[0])),
-                    'target': [(target['capture_date'].dt.strftime('%Y-%m-%d %H:%M:%S').values[0],
-                                target['image_file_path'].values[0])],
-                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
-                                  zip(input_sequence['capture_date'], input_sequence['image_file_path'])]
+                    'target': [(target['capture_date'].dt.strftime('%Y-%m-%d %H:%M:%S').values[0], target['image_file_path'].values[0])],
+                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in zip(input_sequence['capture_date'], input_sequence['image_file_path'])]
                 }
                 uid = f"{roi}_{input_sequence['capture_date'].min().strftime('%Y-%m-%d')}_{input_sequence['capture_date'].max().strftime('%Y-%m-%d')}"
                 tx_min, tx_max = input_sequence['capture_date'].min(), input_sequence['capture_date'].max()
@@ -102,10 +43,10 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                     sensor_roi_df = preprocess(sensor_roi_df)
                     sensor_roi_df = sensor_roi_df[
                         (sensor_roi_df['capture_date'] >= tx_min) & (sensor_roi_df['capture_date'] <= tx_max)
-                        ]
+                    ]
                     entry[sensor_name] = [
-                        (date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
-                        zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
+                        (date.strftime('%Y-%m-%d %H:%M:%S'), path)
+                        for date, path in zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
                     ]
                 output_dict[uid] = entry
         elif mode == 's2s':
@@ -114,8 +55,7 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                 set_main_sensor_df = main_sensor_per_roi_df.iloc[i * tx:(i + 1) * tx]
                 entry = {
                     'roi': (roi, (set_main_sensor_df.iloc[0]['latitude'], set_main_sensor_df.iloc[0]['longitude'])),
-                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
-                                  zip(set_main_sensor_df['capture_date'], set_main_sensor_df['image_file_path'])]
+                    main_sensor: [(date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in zip(set_main_sensor_df['capture_date'], set_main_sensor_df['image_file_path'])]
                 }
                 id = f"{roi}_{set_main_sensor_df['capture_date'].min().strftime('%Y-%m-%d')}_{set_main_sensor_df['capture_date'].max().strftime('%Y-%m-%d')}"
                 tx_min, tx_max = set_main_sensor_df['capture_date'].min(), set_main_sensor_df['capture_date'].max()
@@ -126,14 +66,90 @@ def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p'):
                     sensor_roi_df = preprocess(sensor_roi_df)
                     sensor_roi_df = sensor_roi_df[
                         (sensor_roi_df['capture_date'] >= tx_min) & (sensor_roi_df['capture_date'] <= tx_max)
-                        ]
+                    ]
                     entry[sensor_name] = [
-                        (date.strftime('%Y-%m-%d %H:%M:%S'), path) for date, path in
-                        zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
+                        (date.strftime('%Y-%m-%d %H:%M:%S'), path)
+                        for date, path in zip(sensor_roi_df['capture_date'], sensor_roi_df['image_file_path'])
                     ]
                 output_dict[id] = entry
+    return output_dict
+
+def construct_dataset(sensors: dict, main_sensor='s2_toa', tx=3, mode='s2p', num_cores=56):
+    """
+    Constructs a dataset for cloud removal from satellite images.
+    The function pairs each clear image with surrounding cloudy images for testing or generates sets of images for training.
+    It ensures no cloudy image is reused across different groups.
+
+    Args:
+        sensors (dict of pd.DataFrame): Dict of DataFrames containing metadata for all sensors.
+        main_sensor (str): Name of the main sensor.
+        tx (int): The number of images to find surrounding each clear image for testing, or in each set for training. Default is 3.
+        mode (str): Mode of operation, either 's2p' for sequence-to-point or 's2s' for sequence-to-sequence. Default is 's2p'.
+
+    Returns:
+        dict: A dictionary containing grouped image information. Each key is an ID, and the value is a dictionary with 'roi' and sensor data.
+              ID has the format of `{roi}_{main_sensor_start_date}_{main_sensor_end_date}` for uniqueness.
+              For s2p:
+              {
+                  ID1: {
+                      'roi': ('roixxxx', (latitude, longitude)),
+                      'target': [(timestamp, image_file_path)],
+                      'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...],
+                      ...
+                  },
+                  ID2: {...},
+                  ...
+              }
+              For s2s:
+              {
+                  ID1: {
+                      'roi': ('roixxxx', (latitude, longitude)),
+                      'main_sensor': [(timestamp, image_file_path), (timestamp, image_file_path)...],
+                      ...
+                  },
+                  ID2: {...},
+                  ...
+              }
+
+    Raises:
+        ValueError: If provided tx is less than or equal to 0.
+                    If mode is not 's2p' or 's2s'.
+
+    Note:
+        The input DataFrame must contain the following columns: 'roi', 'capture_date', 'cloud_percentage_30', 'shadow_percentage', and any other necessary columns to calculate the cloud and shadow coverage.
+        The function expects the 'capture_date' to be convertible to a pandas datetime format, and it relies on chronological sorting of these dates to function correctly.
+        It is also assumed that each row in the DataFrame has a unique combination of 'roi', 'capture_date', and 'image_file_path'.
+    """
+
+    if tx <= 0:
+        raise ValueError("tx must be greater than 0")
+
+    main_sensor_df = sensors[main_sensor].copy()
+    main_sensor_df = preprocess(main_sensor_df)
+
+    if main_sensor == 's2_toa':
+        # filter out images without cloud and shadow information or with nan values in their cloud and shadow masks
+        main_sensor_df = main_sensor_df[main_sensor_df['cloud_percentage_30'] != -1]
+        main_sensor_df = main_sensor_df[main_sensor_df['cld_shdw_nan_percentage'] == 0]
+        main_sensor_df['total_cloud_shadow'] = main_sensor_df['cloud_percentage_30'] + main_sensor_df['shadow_percentage_30']
+        main_sensor_df['clear_image_flag'] = main_sensor_df['total_cloud_shadow'] < 10
+
+    unique_rois = list(main_sensor_df['roi'].unique())
+    chunk_size = len(unique_rois) // num_cores + 1
+    chunks = [unique_rois[i:i + chunk_size] for i in range(0, len(unique_rois), chunk_size)]
+
+    with Pool(num_cores) as pool:
+        results = pool.map(construct_dataset_chunk, [(main_sensor_df[main_sensor_df['roi'].isin(roi_group)], main_sensor, tx, mode, sensors) for roi_group in chunks])
+    output_dict = {k: v for result in results for k, v in result.items()}
 
     return output_dict
+
+def preprocess(sensor_df):
+    sensor_df = sensor_df[sensor_df.nan_percentage == 0]
+    sensor_df = sensor_df.drop_duplicates(subset=["capture_date", "roi"])
+    sensor_df['capture_date'] = pd.to_datetime(sensor_df['capture_date'], format="%Y-%m-%d %H:%M:%S")
+    sensor_df.sort_values(by='capture_date', inplace=True)
+    return sensor_df
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Construct AllClear Datasets")
@@ -147,7 +163,6 @@ def parse_arguments():
     parser.add_argument("--version", type=str, help="Version of the dataset", required=True, default='v3')
     args = parser.parse_args()
     return args
-
 
 if __name__ == "__main__":
     args = parse_arguments()

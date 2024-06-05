@@ -15,7 +15,7 @@ else:
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
-from allclear.utils import plot_lulc_metrics, benchmark_visualization
+from allclear.utils import plot_lulc_metrics, benchmark_visualization, benchmark_visualization_with_mask
 
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
@@ -244,8 +244,10 @@ class BenchmarkEngine:
     def setup_data_loader(self):
 
         if self.args.dataset_type == "AllClear":
+            print(f"Loading AllClear Dataset from {self.args.dataset_fpath}...")
             with open(self.args.dataset_fpath, "r") as f:
                 dataset = json.load(f)
+            print(f"Loading clod shadow masks from {self.args.cld_shdw_fpaths}...")
             with open(self.args.cld_shdw_fpaths, "r") as f:
                 cld_shdw_fpaths = json.load(f)
             print(f"Selected ROIs: {self.args.selected_rois}")
@@ -270,6 +272,8 @@ class BenchmarkEngine:
                 # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
                 print(f"Number of unique ROIs: {len(dataset)}")
             
+            if self.args.do_preprocess_for_sen12mstrcs == True:
+                print("Enabling Customized Preprocessing SEN12MS-CR-TS dataset for SEN12MS-CR")
             dataset = CRDataset(
                 dataset=dataset,
                 selected_rois=selected_rois,
@@ -280,6 +284,7 @@ class BenchmarkEngine:
                 target_mode=self.args.target_mode,
                 cld_shdw_fpaths=cld_shdw_fpaths,
                 do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
+                do_preprocess_for_sen12mstrcs=self.args.do_preprocess_for_sen12mstrcs,
             )
             return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
@@ -319,6 +324,48 @@ class BenchmarkEngine:
 
             opt = CTGAN_OPT()
             test_data = Sen2_MTC(opt, mode="test")
+            test_loader = DataLoader(test_data, 
+                                     batch_size=self.args.batch_size,
+                                     shuffle=False, 
+                                     num_workers=self.args.num_workers,
+                                     drop_last=False)
+
+            return test_loader
+        
+        elif self.args.dataset_type == "STGAN":
+
+            if "ck696" in os.getcwd():
+                sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
+            else:
+                sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA")
+
+            from dataset_old import MultipleDataset
+            from torch.utils.data import random_split
+            
+            class CTGAN_OPT:
+                def __init__(self):
+                    self.root = "/share/hariharan/ck696/allclear/baselines/PMAA/data"
+                    self.test_mode = "test"
+                
+                def __iter__(self):
+                    return iter(self.__dict__.items())
+                
+                def __getitem__(self, key):
+                    return self.__dict__[key]
+
+            opt = CTGAN_OPT()
+
+            total_data = MultipleDataset(
+                root=os.path.join(opt.root, "multipleImage"),
+                band=4,
+            )
+
+            _, _, test_data = random_split(
+                dataset=total_data,
+                lengths=(2504, 313, 313),
+                generator=torch.Generator().manual_seed(2022),
+            )
+
             test_loader = DataLoader(test_data, 
                                      batch_size=self.args.batch_size,
                                      shuffle=False, 
@@ -405,6 +452,44 @@ class BenchmarkEngine:
 
         return inputs
 
+    
+    def convert_data_format_from_stgan(self, batch):
+
+        print("Convert data format from STGAN")
+
+        inputs_bands = [3,2,1,7]
+        targets_bands = [3,2,1]
+        inputs = {}
+        real_A, real_B, image_names = batch
+
+        # real_A = [IMG1, IMG2, IMg3] 
+        # IMG: bs x c x h x w
+        input_images = torch.stack(real_A, dim=2) * 0.5 + 0.5
+        # Input_images: bs x c x t x h x w
+        target = real_B.unsqueeze(2) * 0.5 + 0.5
+
+        bs, nc, ct, nw, nh = input_images.shape
+        input_images_placeholder = torch.zeros((bs, 15, 3, 256, 256))
+        target_placeholder = torch.zeros((bs, 15, 1, 256, 256))
+        input_images_placeholder[:,inputs_bands,...] = input_images
+        target_placeholder[:,targets_bands,...] = target
+        input_cld_shdw = torch.zeros((bs, 2, ct, nw, nh))
+        target_cld_shdw = torch.zeros((bs, 2, 1, nw, nh))
+
+        inputs = {
+            "input_images": input_images_placeholder,
+            "input_cld_shdw": input_cld_shdw,
+            "target": target_placeholder,
+            "target_cld_shdw": target_cld_shdw,
+            "dw": None,
+            "target_dw": None,
+            "time_differences": None,
+            "pmaa_x": torch.stack(real_A, dim=1),
+            "pmaa_y": real_B,
+        }
+
+        return inputs
+
 
 
     def run(self):
@@ -428,7 +513,9 @@ class BenchmarkEngine:
         for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
             self.args.eval_iter = eval_iter
-            # if self.args.eval_iter == 20:
+            # if self.args.eval_iter == 200:
+            #     break
+            # if self.args.eval_iter == 10:
             #     break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
@@ -436,6 +523,9 @@ class BenchmarkEngine:
 
             elif self.args.dataset_type == "CTGAN":
                 data = self.convert_data_format_from_ctgan(data)
+
+            elif self.args.dataset_type == "STGAN":
+                data = self.convert_data_format_from_stgan(data)
 
             with torch.no_grad():
                 data = self.model.preprocess(data)
@@ -463,7 +553,9 @@ class BenchmarkEngine:
             batch_results = metrics.evaluate_aggregate()
 
             data["output"] = outputs["output"]
-            benchmark_visualization(data, self.args, metrics=metrics)
+            if self.args.draw_vis == 1:
+                benchmark_visualization(data, self.args, metrics=metrics)
+            # benchmark_visualization_with_mask(data, self.args, metrics=metrics)
 
             # Store per-batch metrics
             for key in per_batch_metrics:
@@ -497,7 +589,7 @@ class BenchmarkEngine:
                 lulc_class: {metric: torch.tensor(values).nanmean().item() for metric, values in class_metrics.items()}
                 for lulc_class, class_metrics in lulc_metrics_all.items()
             }
-            print(final_lulc_metrics)
+            # print(final_lulc_metrics)
             plot_lulc_metrics(final_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
         
             final_lulc_metrics = pd.DataFrame(final_lulc_metrics)
@@ -535,8 +627,9 @@ def parse_arguments():
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
+    parser.add_argument("--do-preprocess-for-sen12mstrcs", action="store_true", help="Preprocess the data before running the model")
     parser.add_argument("--dataset-type", type=str, default="AllClear", 
-                        choices=["AllClear", "CTGAN", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
+                        choices=["AllClear","STGAN", "CTGAN", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     # parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
     parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
@@ -608,5 +701,7 @@ if __name__ == "__main__":
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")
     print("Loading Benchmark Engine...")
     print(f"Unique ROI: {args.unique_roi}")
+    print(f"Model Name: {args.model_name}")
+    print(f"Dataset Type: {args.dataset_type}")
     engine = BenchmarkEngine(args)
     engine.run()

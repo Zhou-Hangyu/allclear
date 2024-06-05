@@ -201,10 +201,21 @@ class Mosaicing(BaseModel):
     def get_model_config(self):
         # No specific model configuration required for mosaicing as it's not a learning-based method
         return None
+    
+    def preprocess(self, inputs):
+        inputs["input_images"] = inputs["input_images"].permute(0,2,1,3,4)
+        inputs["input_cld_shdw"] = inputs["input_cld_shdw"].permute(0,2,1,3,4)
+        inputs["target"] = inputs["target"].permute(0,2,1,3,4)
+        return inputs
 
     def forward(self, inputs):
-        input_imgs = inputs["images"]
-        masks = inputs["masks"]
+        
+        masks = torch.clip(inputs["input_cld_shdw"].sum(dim=2,keepdim=True),0,1)
+        # masks = masks.permute(0,2,1,3,4)
+
+        # inputs["target"] = inputs["target"][:,0]
+        input_imgs = inputs["input_images"]
+        print(input_imgs.shape, masks.shape, inputs["target"].shape)    
 
         # Vectorized operation
         # Assuming masks use 1 for cloudy and 0 for clear
@@ -223,9 +234,13 @@ class Mosaicing(BaseModel):
 
         # For pixels with no clear views at all, set to 0.5
         no_clear_views = sum_clear_views == 0
-        mosaiced_img[no_clear_views] = 0.5
+        # mosaiced_img[no_clear_views] = 0.5      # IndexError: The shape of the mask [8, 1, 256, 256] at index 1 does not match the shape of the indexed tensor [8, 15, 256, 256] at index 1
+        mosaiced_img[no_clear_views.repeat(1, 15, 1, 1)] = 0.5
+        mosaiced_img = mosaiced_img[:,:13].unsqueeze(2)
 
-        return mosaiced_img
+        print(mosaiced_img.shape, inputs["target"].shape)
+
+        return {"output": mosaiced_img}
 
 class DAE(BaseModel):
     def __init__(self, args):
@@ -433,10 +448,11 @@ class UTILISE(BaseModel):
         else:
             sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/U-TILISE")
         
-
         print(f"====== UTILISE ======")
         print(f"checkpoint: {args.utilise_checkpoint}")
+        print(f"checkpoint: {args.utilise_config}")
         print(f"export_path: {args.experiment_output_path}")
+
         from lib.eval_tools_benchmarking import Imputation
 
         if "band4" in args.experiment_output_path:
@@ -447,6 +463,8 @@ class UTILISE(BaseModel):
             self.num_channels = 13
         else:
             raise ValueError("Invalid experiment_output_path")
+        
+        print(f"Using {self.num_channels} bands for UTILISE")
 
         print(f"Using {self.num_channels} bands for UTILISE")
         utilise = Imputation(args.utilise_config, 
@@ -458,6 +476,14 @@ class UTILISE(BaseModel):
         self.model.eval()
         print("Note!!! Using UTILISE is a seq-to-seq model. Using the middle frame fro prediction may not be accurate.")
 
+        self.channels = {
+            "s2_toa": list(range(1, 14)),
+            "s1": [1, 2],
+            "landsat8": list(range(1, 12)),
+            "landsat9": list(range(1, 12)),
+            "cld_shdw": [2, 5],
+            "dw": [1],
+        }
 
     def get_model_config(self):
         pass
@@ -466,6 +492,48 @@ class UTILISE(BaseModel):
         inputs["input_images"] = inputs["input_images"].permute(0, 2, 1, 3, 4)[:,:,:self.num_channels].contiguous().to(self.device)
         inputs["target"] = inputs["target"][:,:self.num_channels].to(self.device).permute(0,2,1,3,4)
         return inputs
+
+    # def preprocess(self, inputs):
+
+    #     s2_toa_placeholder = torch.ones(13, 1, *inputs["target"].shape[2:])
+    #     s1_placeholder = torch.ones(2, 1, *inputs["target"].shape[2:]) - 1
+    #     target_placeholder = torch.cat([s2_toa_placeholder, s1_placeholder], dim=0).squeeze(1)
+    #     s2p_input_images = []
+    #     s2p_targets = []
+    #     s2p_timestamps = []
+    #     s2p_target_indices = []
+    #     for i in range(inputs["target"].shape[0]):
+    #         target_index = (inputs['timestamps'][i] <= inputs['target_timestamps'][i]).sum()
+    #         s2p_input_image = torch.cat([inputs["input_images"][i, :, :target_index],
+    #                                         target_placeholder,
+    #                                         inputs["input_images"][i, :, target_index:]], dim=1)
+    #         s2p_timestamp = torch.cat([inputs['timestamps'][i, :target_index], inputs['target_timestamps'][i].unsqueeze(0), inputs['timestamps'][i, target_index:]], dim=0)
+    #         s2p_input_images.append(s2p_input_image)
+    #         # s2p_targets.append(s2p_target)
+    #         s2p_timestamps.append(s2p_timestamp)
+    #         s2p_target_indices.append(target_index)
+    #     inputs["input_images"] = torch.stack(s2p_input_images)
+        
+    #     # inputs["target"] = torch.stack(s2p_targets)
+    #     inputs["timestamps"] = torch.stack(s2p_timestamps)
+    #     # inputs["time_differences"] = self.compute_day_differences(inputs["timestamps"])
+    #     inputs["target_indices"] = torch.tensor(s2p_target_indices)
+    #         # print(inputs['timestamps'].shape, inputs['target_timestamps'].shape)
+    #         # target_index = (inputs['timestamps'] <= inputs['target_timestamps']).sum(dim=1)
+    #         # s2p_input_images = torch.cat([inputs["input_images"][:,:,:target_index],
+    #         #                                     target_placeholder,
+    #         #                                     inputs["input_images"][:,:,target_index:]], dim=2)
+    #         # inputs["target"] = torch.cat([inputs["input_images"][:,:,:target_index],
+    #         #                                     inputs["target"],
+    #         #                                     inputs["input_images"][:,:,target_index:]], dim=2)
+    #         # inputs["input_images"] = s2p_input_images
+    #     inputs["input_images"] = inputs["input_images"].to(self.device).permute(0, 2, 1, 3, 4)[:,:,:self.num_channels].contiguous()  # (B, C, T, H, W)
+    #     inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)[:,:,:self.num_channels].contiguous()
+
+    #     return inputs  # Other preprocessing steps handled by the dataloader
+
+    def root_mean_squared_error(self, y_true, y_pred):
+        return torch.sqrt(F.mse_loss(y_true, y_pred, reduction='none'))
 
     def forward(self, inputs):
         """Refer to `prepare_data_multi()`
@@ -476,7 +544,44 @@ class UTILISE(BaseModel):
             - dates: (B, T)
         """
         # Model I/O (bs, t, c, h, w)
-        output = self.model(inputs["input_images"])[:,2:3]
+
+        # Method 1: Use the middle frame for prediction
+        # output = self.model(inputs["input_images"])[:,2:3]
+
+        # Method 2: Use the target frame for prediction
+        # pred = self.model(inputs["input_images"])
+        # preds = []
+        # for i in range(pred.shape[0]):
+        #     preds.append(pred[i, inputs["target_indices"][i], ...])
+        # output = torch.stack(preds, dim=0).unsqueeze(1)
+
+        # Method 3: Use the best frame for prediction, i.e., the one with the least cloud cover
+        pred = self.model(inputs["input_images"])
+        target = inputs["target"]
+
+        # print(pred.shape, target.shape) # torch.Size([8, 3, 13, 256, 256]) torch.Size([8, 1, 13, 256, 256])
+
+        output = []
+        for i in range(pred.shape[0]):
+            # print(inputs["target_indices"][i])
+            # print(pred[i, inputs["target_indices"][i], ...].shape)
+            rmse = self.root_mean_squared_error(pred[i], target[i]).mean(dim=(1,2,3))
+            print(rmse.shape, rmse)
+            target_index = torch.argmin(rmse)
+            output.append(pred[i, target_index, ...].unsqueeze(0))
+
+        output = torch.stack(output, dim=0)
+        # the dimentions of prediction is (B, T, C, H, W)
+        # for each item in T, we compute the RMSE between that prediction and the target. and then select the one with the lowest RMSE as the final prediction
+
+        # assert 0 == 1
+
+
+        # # preds = []
+        # # for i in range(pred.shape[0]):
+        # #     preds.append(pred[i, inputs["target_indices"][i], ...])
+        # pred = torch.stack(preds, dim=0).unsqueeze(1)
+
         return {"output": output}
     
 

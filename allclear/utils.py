@@ -446,7 +446,7 @@ def benchmark_visualization(inputs, args, metrics=None):
                 ax.set_yticks([])
         
             fig.tight_layout()
-            plt.pause(0.1)
+            # plt.pause(0.1)
     
             if args.model_name.lower() == "uncrtaints":
                 fpath = f"""/share/hariharan/cloud_removal/results/visualization-unc-{args.dataset_type}/"""
@@ -457,5 +457,9 @@ def benchmark_visualization(inputs, args, metrics=None):
                 if not os.path.exists(f"/share/hariharan/cloud_removal/results/visualization-pmaa"):
                     os.makedirs(f"/share/hariharan/cloud_removal/results/visualization-pmaa")
                 plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-pmaa/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
-            plt.pause(0.1)
+            elif args.model_name.lower() == "dae":
+                if not os.path.exists(f"/share/hariharan/cloud_removal/results/visualization-dae"):
+                    os.makedirs(f"/share/hariharan/cloud_removal/results/visualization-dae")
+                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-dae/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
+            # plt.pause(0.1)
             plt.close()

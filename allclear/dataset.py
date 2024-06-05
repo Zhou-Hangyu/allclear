@@ -199,7 +199,7 @@ class CRDataset(Dataset):
         if not do_preprocess:
             return image
         else:
-            if sensor_name == "s2_toa":
+            if sensor_name in ["s2_toa", "landsat8", "landsat9"]:
                 image = torch.clip(image, 0, 10000) / 10000
                 image = torch.nan_to_num(image, nan=0)
             elif sensor_name == "s1":

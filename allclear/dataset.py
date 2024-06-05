@@ -119,7 +119,7 @@ class CRDataset(Dataset):
             self.dataset = dataset
         else:
             self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
-            self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())}  # reindex the dataset
+            # self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())}  # reindex the dataset
         self.main_sensor = main_sensor
         self.aux_sensors = aux_sensors
         self.sensors = [main_sensor] + aux_sensors
@@ -153,9 +153,7 @@ class CRDataset(Dataset):
                 "dw": [1],
             }
 
-        self.dataset_ids = list(dataset.keys())
-
-        print("This is Chia-Hsiang testing the dataset.py file.")
+        self.dataset_ids = list(self.dataset.keys())
 
     def __len__(self):
         return len(self.dataset)
@@ -434,6 +432,7 @@ class CRDataset(Dataset):
                 target_timestamps = timestamps
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
+            benchmark_data = {}
             item_dict = {
                 "data_id": data_id if data_id is not None else None,
                 "input_images": sample_stp,  # Shape: (C1(main+aux), T, H, W)

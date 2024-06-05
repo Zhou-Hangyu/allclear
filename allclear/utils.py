@@ -66,7 +66,7 @@ def plot_lulc_metrics(metrics_data, dpi=200, save_dir=None, model_config=None):
     if save_dir:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-        plt.savefig(os.path.join(save_dir, f'{model_config}_lulc_metrics.png'), bbox_inches='tight')
+        plt.savefig(os.path.join(save_dir, f'{model_config}_lulc_metrics.pdf'), bbox_inches='tight')
     else:
         plt.show()
 

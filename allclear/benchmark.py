@@ -254,23 +254,25 @@ class BenchmarkEngine:
             selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
             
             if self.args.unique_roi == 1:
+                pass
+                # raise NotImplementedError("Unique ROI is deprecated for AllClear dataset")
                 # selected_rois = "unique"
-                print(f"Number of total ROIs: {len(dataset)}")
-                unique_dataset = {}
-                unique_indices = []
-                count = 0
-                prev_id = "0"
-                for ID, info in dataset.items():
-                    roi_id = info["roi"][0]
-                    if prev_id == roi_id or roi_id in unique_indices: 
-                        unique_indices.append(roi_id)
-                    else:
-                        unique_dataset[str(count)] = dataset[ID]
-                        count += 1
-                        prev_id = roi_id
-                dataset = unique_dataset
-                # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
-                print(f"Number of unique ROIs: {len(dataset)}")
+                # print(f"Number of total ROIs: {len(dataset)}")
+                # unique_dataset = {}
+                # unique_indices = []
+                # count = 0
+                # prev_id = "0"
+                # for ID, info in dataset.items():
+                #     roi_id = info["roi"][0]
+                #     if prev_id == roi_id or roi_id in unique_indices:
+                #         unique_indices.append(roi_id)
+                #     else:
+                #         unique_dataset[str(count)] = dataset[ID]
+                #         count += 1
+                #         prev_id = roi_id
+                # dataset = unique_dataset
+                # # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
+                # print(f"Number of unique ROIs: {len(dataset)}")
             
             if self.args.do_preprocess_for_sen12mstrcs == True:
                 print("Enabling Customized Preprocessing SEN12MS-CR-TS dataset for SEN12MS-CR")
@@ -284,7 +286,6 @@ class BenchmarkEngine:
                 target_mode=self.args.target_mode,
                 cld_shdw_fpaths=cld_shdw_fpaths,
                 do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
-                do_preprocess_for_sen12mstrcs=self.args.do_preprocess_for_sen12mstrcs,
             )
             return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
@@ -509,7 +510,10 @@ class BenchmarkEngine:
 
         lulc_metrics_all = {i: {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []} for i in range(9)}
 
-
+        predictions = []
+        data_ids = []
+        avg_cld_shdw_percents = []
+        consistent_cld_shdw_percents = []
         for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
             self.args.eval_iter = eval_iter
@@ -528,12 +532,21 @@ class BenchmarkEngine:
                 data = self.convert_data_format_from_stgan(data)
 
             with torch.no_grad():
+                if self.args.dataset_type == "AllClear":
+                    avg_cld_shdw_percent = torch.mean(data['input_cld_shdw'], dim=[2,3,4])  # B, C, T, H, W -> B, C
+                    # compute consistent cld shdw percentage, where consistent cloud and shadow are area where in all three of the images this region all have clud or shdw.
+                    consistent_cld_shdw = (torch.sum(data['input_cld_shdw'], dim=2) == 3).float()
+                    consistent_cld_shdw_percent = torch.mean(consistent_cld_shdw, dim=[2,3])
+                    consistent_cld_shdw_percents.append(consistent_cld_shdw_percent)
+                    avg_cld_shdw_percents.append(avg_cld_shdw_percent)
                 data = self.model.preprocess(data)
                 targets_all.append(data["target"].cpu())
                 target_cld_shdw_mask = (data["target_cld_shdw"][:,0,...] + data["target_cld_shdw"][:,1,...]) > 0
                 target_non_cld_shdw_mask = torch.logical_not(target_cld_shdw_mask).cpu()
                 target_non_cld_shdw_masks_all.append(target_non_cld_shdw_mask)
-                if self.args.dataset_type == "AllClear": target_lulc_maps.append(data["target_dw"].cpu())
+                if self.args.dataset_type == "AllClear":
+                    target_lulc_maps.append(data["target_dw"].cpu())
+                    data_ids.extend(data["data_id"])
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
 
@@ -545,7 +558,8 @@ class BenchmarkEngine:
             batch_outputs = torch.cat(outputs_all, dim=0)
             batch_targets = torch.cat(targets_all, dim=0)
             batch_masks = torch.cat(target_non_cld_shdw_masks_all, dim=0).unsqueeze(1)
-            if self.args.dataset_type == "AllClear": 
+            predictions.append(batch_outputs)
+            if self.args.dataset_type == "AllClear":
                 batch_lulc_maps = torch.cat(target_lulc_maps, dim=0)
                 metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device, lulc_maps=batch_lulc_maps)
             else:
@@ -578,25 +592,45 @@ class BenchmarkEngine:
         final_results = {key: torch.tensor(values).nanmean().item() for key, values in per_batch_metrics.items()}
         print(final_results)
 
-        print(f"experiment_output_path: {self.args.experiment_output_path}")
 
         # Compute final stratified metrics for each LULC class
-        os.makedirs(f"{self.args.experiment_output_path}", exist_ok=True)
-        os.makedirs(f"{self.args.experiment_output_path}/{self.args.dataset_type}", exist_ok=True)
+        output_path = f"{self.args.experiment_output_path}/{self.args.dataset_type}/{self.args.dataset_fpath.split('/')[-1].split('.')[0]}"
+        os.makedirs(output_path, exist_ok=True)
+        print(f"experiment_output_path: {output_path}")
 
-        if self.args.dataset_type == "AllClear": 
+        # save predictions
+        predictions = torch.cat(predictions, dim=0)
+        torch.save(predictions, f"{output_path}/{self.args.model_name}_predictions.pt")
+
+        if self.args.dataset_type == "AllClear":
+            # save the metadata for visualization
+            avg_cld_shdw_percent = torch.cat(avg_cld_shdw_percents, dim=0)
+            consistent_cld_shdw_percent = torch.cat(consistent_cld_shdw_percents, dim=0)
+            metadata = {}
+            for i in range(len(data_ids)):
+                metadata[data_ids[i]] = {
+                    "avg_cld_percent": avg_cld_shdw_percent[i][0].item(),
+                    "avg_shdw_percent": avg_cld_shdw_percent[i][1].item(),
+                    "consistent_cld_percent": consistent_cld_shdw_percent[i][0].item(),
+                    "consistent_shdw_percent": consistent_cld_shdw_percent[i][1].item()
+                }
+            # save as csv file where the row is the data_id
+            metadata = pd.DataFrame.from_dict(metadata, orient='index')
+            metadata.to_csv(f"{output_path}/{self.args.model_name}_metadata.csv", index=True)
+
             final_lulc_metrics = {
                 lulc_class: {metric: torch.tensor(values).nanmean().item() for metric, values in class_metrics.items()}
                 for lulc_class, class_metrics in lulc_metrics_all.items()
             }
-            # print(final_lulc_metrics)
-            plot_lulc_metrics(final_lulc_metrics, save_dir=self.args.experiment_output_path, model_config=f"{self.args.model_name}_map")
+            plot_lulc_metrics(final_lulc_metrics, save_dir=output_path, model_config=f"{self.args.model_name}")
         
             final_lulc_metrics = pd.DataFrame(final_lulc_metrics)
-            final_lulc_metrics.to_csv(f"{self.args.experiment_output_path}/{self.args.model_name}_lulc_metrics.csv", index=True)
+            final_lulc_metrics.to_csv(f"{output_path}/{self.args.model_name}_lulc_metrics.csv", index=True)
 
         final_results = pd.DataFrame(final_results, index=[0])
-        final_results.to_csv(f"{self.args.experiment_output_path}/{self.args.dataset_type}/{self.args.model_name}_results.csv", index=False)
+        final_results.to_csv(f"{output_path}/{self.args.model_name}_aggregated_metrics.csv", index=False)
+
+        metadata = None
 
         self.cleanup()
 

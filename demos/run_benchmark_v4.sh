@@ -11,6 +11,8 @@ BATCH_SIZE=8
 NUM_WORKERS=4
 DEVICE="cuda:0"
 SELECTED_ROIS='all'
+#SELECTED_ROIS='roi503195 roi124670 roi623817'
+#SELECTED_ROIS='roi503195 roi124670 roi623817 roi652551 roi124702 roi677264 roi781139 roi433811 roi55902'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/dae/init"
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
@@ -22,8 +24,10 @@ TX=3
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/allclear/shared_experiments/benchmark/[tx3_s1_d10k_[s2]]_on_[AC]"
-EXP_NAME="tx3_s1_d10k_[s2]"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/allclear/shared_experiments/benchmark/tx3_s1_d10k"
+#EXP_NAME="tx3_s1_d10k_[s2]"
+EXP_NAME="tx3_s1_d10k"
+#EXP_NAME="tx3_s1_d100p"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"

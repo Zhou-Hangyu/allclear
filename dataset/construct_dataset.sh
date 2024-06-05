@@ -15,8 +15,8 @@ MAIN_SENSOR="s2_toa"
 #MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v3/s2_toa_train_2k_metadata.csv'
 #MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v3/s2_toa_train_20k_metadata.csv'
 #MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v4/s2_toa_test_3k_metadata.csv'
-MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v4/s2_toa_train_19k_metadata.csv'
-#MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v4/s2_toa_val_1k_metadata.csv'
+#MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v4/s2_toa_train_19k_metadata.csv'
+MAIN_SENSOR_METADATA='/share/hariharan/cloud_removal/metadata/v4/s2_toa_val_1k_metadata.csv'
 AUX_SENSORS=(
 "s1"
 "landsat8"
@@ -28,10 +28,12 @@ AUX_SENSOR_METADATA=(
 #'/scratch/allclear/metadata/v3/landsat9_dataset_500_metadata.csv'
 #'/share/hariharan/cloud_removal/metadata/v3/s1_test_4k_metadata.csv'
 #'/share/hariharan/cloud_removal/metadata/v3/s1_train_2k_metadata.csv'
-'/share/hariharan/cloud_removal/metadata/v4/s1_train_19k_metadata.csv'
-#'/share/hariharan/cloud_removal/metadata/v4/s1_val_1k_metadata.csv'
-'/share/hariharan/cloud_removal/metadata/v4/landsat8_train_19k_metadata.csv'
-'/share/hariharan/cloud_removal/metadata/v4/landsat9_train_19k_metadata.csv'
+#'/share/hariharan/cloud_removal/metadata/v4/s1_train_19k_metadata.csv'
+'/share/hariharan/cloud_removal/metadata/v4/s1_val_1k_metadata.csv'
+#'/share/hariharan/cloud_removal/metadata/v4/landsat8_train_19k_metadata.csv'
+#'/share/hariharan/cloud_removal/metadata/v4/landsat9_train_19k_metadata.csv'
+'/share/hariharan/cloud_removal/metadata/v4/landsat8_val_1k_metadata.csv'
+'/share/hariharan/cloud_removal/metadata/v4/landsat9_val_1k_metadata.csv'
 #'/share/hariharan/cloud_removal/metadata/v4/s1_test_3k_metadata.csv'
 )
 #OUTPUT_DIR="/scratch/allclear/metadata/v3"

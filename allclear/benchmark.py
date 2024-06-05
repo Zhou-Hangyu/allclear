@@ -15,7 +15,7 @@ else:
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
-from allclear.utils import plot_lulc_metrics, benchmark_visualization, benchmark_visualization_with_mask
+from allclear.utils import plot_lulc_metrics, benchmark_visualization #, benchmark_visualization_with_mask
 
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)

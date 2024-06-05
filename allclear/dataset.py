@@ -427,6 +427,7 @@ class CRDataset(Dataset):
 
             # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
             item_dict = {
+                "data_id": data_id if data_id is not None else None,
                 "input_images": sample_stp,  # Shape: (C1(main+aux), T, H, W)
                 "target": target_image,  # Shape: (C2(main_sensor), T, H, W)
                 "input_cld_shdw": inputs_cld_shdw.permute(1, 0, 2, 3) if inputs_cld_shdw is not None else None,

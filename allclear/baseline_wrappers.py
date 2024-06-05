@@ -71,7 +71,7 @@ class UnCRtainTS(BaseModel):
         load_checkpoint(self.config, self.config.weight_folder, self.model, f"model{ckpt_n}")
         self.model.eval()
 
-        if "noSAR_1" in self.args.experiment_name:
+        if "noSAR_1" in self.args.experiment_name or self.args.uc_s1 == 0:
             self.num_input_dims = 13
         else:
             self.num_input_dims = 15
@@ -167,6 +167,11 @@ class UnCRtainTS(BaseModel):
         # if self.args.draw_vis:
         #     inputs["output"] = out.cpu()
         #     benchmark_visualization(inputs, self.args)
+
+        # print(f"output shape: {out.shape}")
+        # print(f"target shape: {target_imgs.shape}")
+
+        # assert 0 == 1
             
         return {"output": out, "variance": var}
 
@@ -211,36 +216,20 @@ class Mosaicing(BaseModel):
     def forward(self, inputs):
         
         masks = torch.clip(inputs["input_cld_shdw"].sum(dim=2,keepdim=True),0,1)
-        # masks = masks.permute(0,2,1,3,4)
-
-        # inputs["target"] = inputs["target"][:,0]
         input_imgs = inputs["input_images"]
-        print(input_imgs.shape, masks.shape, inputs["target"].shape)    
 
-        # Vectorized operation
-        # Assuming masks use 1 for cloudy and 0 for clear
-        # Invert masks: 0 for cloudy, 1 for clear
         clear_masks = 1 - masks
-        # Use clear_masks to zero out cloudy pixels
         clear_pixels = input_imgs * clear_masks
-        # Sum the pixel values along the time dimension
         sum_clear_pixels = clear_pixels.sum(dim=1)
-        # Sum the clear views along the time dimension
         sum_clear_views = clear_masks.sum(dim=1)
-        # Avoid division by zero by replacing 0 with 1 for clear view counts
         sum_clear_views[sum_clear_views == 0] = 1
-        # Compute the average by dividing sum of pixel values by number of clear views
         mosaiced_img = sum_clear_pixels / sum_clear_views
 
-        # For pixels with no clear views at all, set to 0.5
         no_clear_views = sum_clear_views == 0
-        # mosaiced_img[no_clear_views] = 0.5      # IndexError: The shape of the mask [8, 1, 256, 256] at index 1 does not match the shape of the indexed tensor [8, 15, 256, 256] at index 1
         mosaiced_img[no_clear_views.repeat(1, 15, 1, 1)] = 0.5
-        mosaiced_img = mosaiced_img[:,:13].unsqueeze(2)
+        output = mosaiced_img[:,:13].unsqueeze(2).permute(0,2,1,3,4)
 
-        print(mosaiced_img.shape, inputs["target"].shape)
-
-        return {"output": mosaiced_img}
+        return {"output": output}
 
 class DAE(BaseModel):
     def __init__(self, args):

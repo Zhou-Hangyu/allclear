@@ -155,6 +155,8 @@ class CRDataset(Dataset):
 
         self.dataset_ids = list(dataset.keys())
 
+        print("This is Chia-Hsiang testing the dataset.py file.")
+
     def __len__(self):
         return len(self.dataset)
 
@@ -380,19 +382,25 @@ class CRDataset(Dataset):
             raise ValueError(f"The {self.format} format is not supported.")
         else:
             output_sensors = self.sensors
-            sample_stp = torch.ones((self.tx,
-                                     sum([len(self.channels[sensor]) for sensor in output_sensors]),
+            if "landsat8" in self.sensors and "landsat9" in self.sensors:
+                sample_stp = torch.ones((self.tx,
+                                     sum([len(self.channels[sensor]) for sensor in output_sensors])-11,
                                      self.center_crop_size[0],
                                      self.center_crop_size[1]))
+            else:
+                sample_stp = torch.ones((self.tx,
+                                        sum([len(self.channels[sensor]) for sensor in output_sensors]),
+                                        self.center_crop_size[0],
+                                        self.center_crop_size[1]))
 
             # merge landsat8 and landsat9 into one sensor for less sparse input.
             channel_start_index = 0
             channel_start_indices = {}
             for sensor in output_sensors:
                 if sensor == "landsat8" and "landsat9" in output_sensors:
-                    channel_start_indices[sensor] = channel_start_indices["landsat9"]
+                    channel_start_indices[sensor] = 15
                 elif sensor == "landsat9" and "landsat8" in output_sensors:
-                    channel_start_indices[sensor] = channel_start_indices["landsat8"]
+                    channel_start_indices[sensor] = 15
                 else:
                     channel_start_indices[sensor] = channel_start_index
                     channel_start_index += len(self.channels[sensor])

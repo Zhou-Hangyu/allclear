@@ -226,14 +226,18 @@ if __name__ == "__main__":
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_train_20Ksamples.csv")
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_test_4Ksamples.csv")
-    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/train_rois_19k.csv")
+    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/train_rois_19k.csv")
+    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/val_rois_1k.csv")
+    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/test_rois_3k.csv")
     # SELECTED_ROIS_FNAME = "test_4k.txt"
     # SELECTED_ROIS_FNAME = "test_4k_v2.txt"
     # SELECTED_ROIS_FNAME = "train_2k.txt"
     # SELECTED_ROIS_FNAME = "dataset_500.txt"
     # SELECTED_ROIS_FNAME = "train_9k.txt"
     # SELECTED_ROIS_FNAME = "train_20k.txt"
-    SELECTED_ROIS_FNAME = "train_rois_19k.txt"
+    # SELECTED_ROIS_FNAME = "train_rois_19k.txt"
+    # SELECTED_ROIS_FNAME = "val_rois_1k.txt"
+    SELECTED_ROIS_FNAME = "test_3k.txt"
     # SELECTED_ROIS = ROIS
     # with open(f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
     #     SELECTED_ROIS = f.read().splitlines()
@@ -266,5 +270,5 @@ if __name__ == "__main__":
     for satellite in metadata_dict:
         metadata_dict[satellite] = parallel_process(metadata_dict[satellite], satellite, WORKERS)
         # metadata_dict[satellite].to_csv(f"/scratch/allclear/metadata/v3/{satellite}_{SELECTED_ROIS_FNAME.split('.')[0]}_metadata.csv", index=False)
-        metadata_dict[satellite].to_csv(f"/share/hariharan/cloud_removal/metadata/v3/{satellite}_{SELECTED_ROIS_FNAME.split('.')[0]}_metadata.csv", index=False)
+        metadata_dict[satellite].to_csv(f"/share/hariharan/cloud_removal/metadata/v4/{satellite}_{SELECTED_ROIS_FNAME.split('.')[0]}_metadata.csv", index=False)
     print("DataFrames are processed.")

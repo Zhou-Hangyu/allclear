@@ -158,7 +158,8 @@ if __name__ == "__main__":
 
     intermediate_names = args.main_sensor_metadata.split("/")[-1].split("_metadata.csv")[0].split("_")
     dataset_string = f"{intermediate_names[-2]}_{intermediate_names[-1]}"
-    fpath = f"{args.output_dir}/{args.mode}_tx{str(args.tx)}_{dataset_string}_{args.version}.json"
+    aux_sensor_string = "_".join(args.auxiliary_sensors)
+    fpath = f"{args.output_dir}/{args.mode}_tx{str(args.tx)}_{dataset_string}_{args.main_sensor}_{aux_sensor_string}_{args.version}.json"
     with open(fpath, 'w') as f:
         json.dump(dataset, f)
     print(f"Found {len(dataset)} entries in the dataset")

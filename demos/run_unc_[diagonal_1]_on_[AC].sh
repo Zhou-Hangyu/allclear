@@ -1,7 +1,7 @@
 #!/bin/bash
 # rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
 export CUDA_VISIBLE_DEVICES=6
-# Command: bash demos/run_benchmark_v4.sh
+# Command: bash demos/run_unc_[diagonal_1]_on_[AC].sh
 
 SCRIPT_PATH="allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
@@ -11,8 +11,6 @@ BATCH_SIZE=8
 NUM_WORKERS=4
 DEVICE="cuda:0"
 SELECTED_ROIS='all'
-#SELECTED_ROIS='roi503195 roi124670 roi623817'
-#SELECTED_ROIS='roi503195 roi124670 roi623817 roi652551 roi124702 roi677264 roi781139 roi433811 roi55902'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/dae/init"
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
@@ -24,10 +22,8 @@ TX=3
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/allclear/shared_experiments/benchmark/tx3_s1_d10k"
-#EXP_NAME="tx3_s1_d10k_[s2]"
-EXP_NAME="tx3_s1_d10k"
-#EXP_NAME="tx3_s1_d100p"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines_v2/uncrtaints_1proi_v2/[diagonal]_on_[AC]"
+EXP_NAME="diagonal_1"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"

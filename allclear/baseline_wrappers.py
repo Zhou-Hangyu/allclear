@@ -71,7 +71,8 @@ class UnCRtainTS(BaseModel):
         load_checkpoint(self.config, self.config.weight_folder, self.model, f"model{ckpt_n}")
         self.model.eval()
 
-        if "noSAR_1" in self.args.experiment_name or self.args.uc_s1 == 0:
+        # if "noSAR_1" in self.args.experiment_name or self.args.uc_s1 == 0:
+        if "noSAR_1" in self.args.experiment_name:
             self.num_input_dims = 13
         else:
             self.num_input_dims = 15
@@ -132,7 +133,7 @@ class UnCRtainTS(BaseModel):
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
 
         if self.args.dataset_type == "AllClear" and "diagonal_1" in self.args.exp_name:
-            inputs["input_images"] = torch.cat([inputs["input_images"][:,:,2:], inputs["input_images"][:,:,:2]], dim=2)
+            inputs["input_images"] = torch.cat([inputs["input_images"][:,:,-2:], inputs["input_images"][:,:,:-2]], dim=2)
 
         return inputs
 

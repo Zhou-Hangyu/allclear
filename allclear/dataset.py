@@ -224,7 +224,7 @@ class CRDataset(Dataset):
     def extract_date(path):
         parts = path.split('_')
         date_str = parts[-4] + '-' + parts[-3] + '-' + parts[-2]
-        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        return datetime.strptime(date_str, '%Y-%m-%d')
 
     def __getitem__(self, idx):
         # with Profile() as prof:

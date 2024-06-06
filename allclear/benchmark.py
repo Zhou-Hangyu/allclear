@@ -514,6 +514,7 @@ class BenchmarkEngine:
         data_ids = []
         avg_cld_shdw_percents = []
         consistent_cld_shdw_percents = []
+        metrics_all = {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []}
         for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
             self.args.eval_iter = eval_iter
@@ -533,9 +534,10 @@ class BenchmarkEngine:
 
             with torch.no_grad():
                 if self.args.dataset_type == "AllClear":
+                    B, C, T, H, W = data["input_images"].shape
                     avg_cld_shdw_percent = torch.mean(data['input_cld_shdw'], dim=[2,3,4])  # B, C, T, H, W -> B, C
                     # compute consistent cld shdw percentage, where consistent cloud and shadow are area where in all three of the images this region all have clud or shdw.
-                    consistent_cld_shdw = (torch.sum(data['input_cld_shdw'], dim=2) == 3).float()
+                    consistent_cld_shdw = (torch.sum(data['input_cld_shdw'], dim=2) == T).float()
                     consistent_cld_shdw_percent = torch.mean(consistent_cld_shdw, dim=[2,3])
                     consistent_cld_shdw_percents.append(consistent_cld_shdw_percent)
                     avg_cld_shdw_percents.append(avg_cld_shdw_percent)
@@ -566,6 +568,13 @@ class BenchmarkEngine:
                 metrics = Metrics(batch_outputs, batch_targets, batch_masks, device=self.device)
             batch_results = metrics.evaluate_aggregate()
 
+            metrics_all["MAE"].extend(metrics.maes.cpu().tolist())
+            metrics_all["RMSE"].extend(metrics.rmses.cpu().tolist())
+            metrics_all["PSNR"].extend(metrics.psnrs.cpu().tolist())
+            metrics_all["SAM"].extend(metrics.sams.cpu().tolist())
+            metrics_all["SSIM"].extend(metrics.ssims.cpu().tolist())
+            # print(metrics.psnrs.shape, metrics.sams.shape, metrics.ssims.shape)
+
             data["output"] = outputs["output"]
             if self.args.draw_vis == 1:
                 benchmark_visualization(data, self.args, metrics=metrics)
@@ -579,8 +588,10 @@ class BenchmarkEngine:
             if self.args.dataset_type == "AllClear": 
                 strat_lulc_metrics = metrics.evaluate_strat_lulc(mode="map")
                 for lulc_class, class_metrics in strat_lulc_metrics.items():
+                    # print(lulc_class, class_metrics)
                     for metric, value in class_metrics.items():
                         lulc_metrics_all[lulc_class][metric].append(value)
+                        # print(value)
 
             # Clear lists for the next batch
             outputs_all.clear()
@@ -612,7 +623,12 @@ class BenchmarkEngine:
                     "avg_cld_percent": avg_cld_shdw_percent[i][0].item(),
                     "avg_shdw_percent": avg_cld_shdw_percent[i][1].item(),
                     "consistent_cld_percent": consistent_cld_shdw_percent[i][0].item(),
-                    "consistent_shdw_percent": consistent_cld_shdw_percent[i][1].item()
+                    "consistent_shdw_percent": consistent_cld_shdw_percent[i][1].item(),
+                    "mae": metrics_all["MAE"][i],
+                    "rmse": metrics_all["RMSE"][i],
+                    "psnr": metrics_all["PSNR"][i],
+                    "sam": metrics_all["SAM"][i],
+                    "ssim": metrics_all["SSIM"][i],
                 }
             # save as csv file where the row is the data_id
             metadata = pd.DataFrame.from_dict(metadata, orient='index')
@@ -656,7 +672,7 @@ def parse_arguments():
     parser.add_argument("--data-split", type=str, default="train", help="Data split to use [train, val, test]")
     parser.add_argument("--device", type=str, required=True, help="Device to run the model on")
     parser.add_argument("--main-sensor", type=str, default="s2_toa", help="Main sensor for the dataset")
-    parser.add_argument("--aux-sensors", type=str, nargs="+", help="Auxiliary sensors for the dataset")
+    parser.add_argument("--aux-sensors", type=str, nargs="*", help="Auxiliary sensors for the dataset")
     parser.add_argument("--aux-data", type=str, nargs="+",default=["cld_shdw", "dw"], help="Auxiliary data for the dataset")
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
     parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")

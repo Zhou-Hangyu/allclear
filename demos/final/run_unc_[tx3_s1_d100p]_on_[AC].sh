@@ -1,11 +1,15 @@
 #!/bin/bash
 # rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
-export CUDA_VISIBLE_DEVICES=6
-# Command: bash demos/run_unc_[diagonal_1]_on_[AC].sh
+export CUDA_VISIBLE_DEVICES=2
+# Command: bash demos/final/run_unc_[tx3_s1_d100p]_on_[AC].sh
 
 SCRIPT_PATH="allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
-DATASET_PATH="/share/hariharan/cloud_removal/metadata/v4/s2p_tx3_test_3k_1proi_v1.json"
+#DATASET_PATH="/share/hariharan/cloud_removal/metadata/v4/s2p_tx3_test_3k_1proi_v1.json"
+#DATASET_PATH="/home/hz477/allclear/metadata/s2p_tx3_test_4k_3proi_v1.json"
+DATASET_PATH="/home/hz477/allclear/metadata/s2p_tx3_test_4k_dontuse.json"
+
+
 MODEL_NAME="uncrtaints"
 BATCH_SIZE=8
 NUM_WORKERS=4
@@ -22,8 +26,9 @@ TX=3
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines_v2/uncrtaints_1proi_v2/[diagonal]_on_[AC]"
-EXP_NAME="diagonal_1"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/allclear/shared_experiments/benchmark/tx3_s1_d100p_s1loose"
+#EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines_v2/uncrtaints_1proi_v2/[tx3_s1_d100p]_on_[AC]"
+EXP_NAME="tx3_s1_d100p"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"

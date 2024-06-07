@@ -1,18 +1,16 @@
 #!/bin/bash
 # rm -r /share/hariharan/ck696/allclear/allclear/__pycache__
-export CUDA_VISIBLE_DEVICES=6
-# Command: bash demos/run_benchmark_v4.sh
+export CUDA_VISIBLE_DEVICES=0
+# Command: bash demos/run_benchmark_dae.sh
 
-SCRIPT_PATH="allclear/benchmark.py"
+SCRIPT_PATH="/share/hariharan/ck696/allclear/allclear/benchmark.py"
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS'
 DATASET_PATH="/share/hariharan/cloud_removal/metadata/v4/s2p_tx3_test_3k_1proi_v1.json"
-MODEL_NAME="uncrtaints"
+MODEL_NAME="utilise"
 BATCH_SIZE=8
 NUM_WORKERS=4
 DEVICE="cuda:0"
 SELECTED_ROIS='all'
-#SELECTED_ROIS='roi503195 roi124670 roi623817'
-#SELECTED_ROIS='roi503195 roi124670 roi623817 roi652551 roi124702 roi677264 roi781139 roi433811 roi55902'
 EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines/dae/init"
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
@@ -20,18 +18,17 @@ AUX_DATA=("cld_shdw" "dw")
 TARGET_MODE="s2p"
 CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
 TX=3
-
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/allclear/shared_experiments/benchmark/tx3_s1_d10k"
-#EXP_NAME="tx3_s1_d10k_[s2]"
-EXP_NAME="tx3_s1_d10k"
-#EXP_NAME="tx3_s1_d100p"
+EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines_v2/utilise_1proi_v2/[sen12mscrts_wo_s1]_on_[AC]"
+EXP_NAME="sen12mscrts_wo_s1"
+UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/default+config_sen12_wo_s1.yaml"
+UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"
 echo "Running script"
-python $SCRIPT_PATH \
+/share/hariharan/ck696/env_bh/anaconda/envs/allclear/bin/python $SCRIPT_PATH \
   --dataset-fpath $DATASET_PATH \
   --baseline-base-path $BASELINE_BASE_PATH \
   --model-name $MODEL_NAME \
@@ -51,8 +48,8 @@ python $SCRIPT_PATH \
   --uc-weight-folder $WEIGHT_FOLDER \
   --uc-exp-name $EXP_NAME \
   --exp-name $EXP_NAME \
-  --uc-s1 1 \
+  --utilise-config $UTILISE_CONFIG \
+  --utilise-checkpoint $UTILISE_CHP \
   --unique-roi 1 \
-  --dataset-type $"AllClear"
-  #  \
-  # --draw-vis 1
+  --dataset-type $"AllClear" \
+  --draw-vis 1

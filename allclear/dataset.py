@@ -110,7 +110,9 @@ class CRDataset(Dataset):
                  s2_toa_channels=None,
                  max_diff=2,
                  cld_shdw_fpaths=None,
-                 do_preprocess=True, ):
+                 do_preprocess=True,
+                 s1_preprocess_mode="default",
+                 stp_mode="allfillones",):
         if aux_sensors is None:
             aux_sensors = []
         if aux_data is None:
@@ -131,6 +133,14 @@ class CRDataset(Dataset):
         self.target_mode = target_mode
         self.max_diff = max_diff
         self.do_preprocess = do_preprocess
+        self.s1_preprocess_mode = s1_preprocess_mode
+        self.stp_mode = stp_mode
+        # self.s1_preprocess_mode = "default"
+        # self.s1_preprocess_mode = "uncrtaints"
+        # self.stp_mode = "allfillzeros"
+        # # self.stp_mode = "allfillones"
+        # self.stp_mode = "s1_available_mask"
+        # self.stp_mode = "s1fillzeros"
         if self.format != "stp":
             raise ValueError("The format is not supported.")
 
@@ -194,7 +204,10 @@ class CRDataset(Dataset):
         return data
 
     @staticmethod
-    def preprocess(image, sensor_name, do_preprocess=True):
+    def rescale(date, limits):
+        return (date - limits[0]) / (limits[1] - limits[0])
+
+    def preprocess(self, image, sensor_name, do_preprocess=True):
         """Set do_preprocess to False to skip preprocessing for benchmarking purposes."""
         if not do_preprocess:
             return image
@@ -203,16 +216,18 @@ class CRDataset(Dataset):
                 image = torch.clip(image, 0, 10000) / 10000
                 image = torch.nan_to_num(image, nan=0)
             elif sensor_name == "s1":
-                image[image < -40] = -40
-                image[0] = torch.clip(image[0] + 25, 0, 25) / 25
-                image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
-                image = torch.nan_to_num(image, nan=-1)
+                if self.s1_preprocess_mode == "default":
+                    image[image < -40] = -40
+                    image[0] = torch.clip(image[0] + 25, 0, 25) / 25
+                    image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
+                    image = torch.nan_to_num(image, nan=-1)
+                elif self.s1_preprocess_mode == "uncrtaints":
+                    dB_min, dB_max = -25, 0
+                    image = np.clip(image, dB_min, dB_max)
+                    image = self.rescale(image, [dB_min, dB_max])
+
             elif sensor_name == "cld_shdw":
-                # mask = torch.isnan(image[0]) | (image[0] < 0.0001)
-                # image[0][mask] = 1
-                # image[1][mask] = 0
                 image = torch.nan_to_num(image, nan=1)
-                pass
             elif sensor_name in ["dw"]:
                 image = image
             else:  # TODO: Implement preprocessing for other sensors
@@ -228,7 +243,6 @@ class CRDataset(Dataset):
 
     def __getitem__(self, idx):
         # with Profile() as prof:
-        # sample = self.dataset[str(idx)]
         data_id = self.dataset_ids[idx]
         sample = self.dataset[data_id]
         roi = sample["roi"][0]
@@ -380,25 +394,43 @@ class CRDataset(Dataset):
             raise ValueError(f"The {self.format} format is not supported.")
         else:
             output_sensors = self.sensors
-            if "landsat8" in self.sensors and "landsat9" in self.sensors:
-                sample_stp = torch.ones((self.tx,
-                                     sum([len(self.channels[sensor]) for sensor in output_sensors])-11,
-                                     self.center_crop_size[0],
-                                     self.center_crop_size[1]))
+            if "landsat8" in self.sensors and "landsat9" in self.sensors: # avoid adding landsat8 and landsat9 separately
+                stp_sensors = [sensor for sensor in self.sensors if sensor != "landsat8"]
             else:
-                sample_stp = torch.ones((self.tx,
-                                        sum([len(self.channels[sensor]) for sensor in output_sensors]),
-                                        self.center_crop_size[0],
-                                        self.center_crop_size[1]))
+                stp_sensors = output_sensors
+            sample_stp = []
+
+            for sensor in stp_sensors:
+                if self.stp_mode == "allfillones":
+                    sample_stp.append(torch.ones((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+                elif self.stp_mode == "allfillzeros":
+                    sample_stp.append(torch.zeros((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+                elif self.stp_mode == "s1_available_mask":
+                    if sensor == "s1":
+                        # one additional channel to signify if s1 is available (1) or not (0)
+                        sample_stp.append(torch.zeros((self.tx, 1, *self.center_crop_size)))
+                        sample_stp.append(torch.ones((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+                    else:
+                        sample_stp.append(torch.ones((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+                elif self.stp_mode == "s1fillzeros":
+                    if sensor == "s1":
+                        sample_stp.append(torch.zeros((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+                    else:
+                        sample_stp.append(torch.ones((self.tx, len(self.channels[sensor]), *self.center_crop_size)))
+            sample_stp = torch.concat(sample_stp, dim=1)
 
             # merge landsat8 and landsat9 into one sensor for less sparse input.
             channel_start_index = 0
             channel_start_indices = {}
             for sensor in output_sensors:
-                if sensor == "landsat8" and "landsat9" in output_sensors:
-                    channel_start_indices[sensor] = 15
-                elif sensor == "landsat9" and "landsat8" in output_sensors:
-                    channel_start_indices[sensor] = 15
+                if sensor == "landsat8" and "landsat9" in channel_start_indices:
+                    channel_start_indices[sensor] = channel_start_indices["landsat9"]
+                elif sensor == "landsat9" and "landsat8" in channel_start_indices:
+                    channel_start_indices[sensor] = channel_start_indices["landsat8"]
+                elif sensor == "s1" and self.stp_mode == "s1_available_mask":
+                    channel_start_indices["s1_available_mask"] = channel_start_index
+                    channel_start_indices[sensor] = channel_start_index + 1
+                    channel_start_index += len(self.channels[sensor]) + 1
                 else:
                     channel_start_indices[sensor] = channel_start_index
                     channel_start_index += len(self.channels[sensor])
@@ -416,11 +448,20 @@ class CRDataset(Dataset):
                     for timestamp, image in inputs[sensor]:
                         day_index = temporal_align_aux_sensors(timestamps_main_sensor, timestamp,
                                                                max_diff=self.max_diff)
-                        if day_index == None: continue
-                        image_channel_size = image.shape[0]
-                        channel_start_index_sensor = channel_start_indices[sensor]
-                        sample_stp[day_index,
-                        channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
+                        if day_index == None:
+                            continue
+                        else:
+                            image_channel_size = image.shape[0]
+                            if sensor == "s1" and self.stp_mode == "s1_available_mask":
+                                channel_start_index_sensor = channel_start_indices["s1_available_mask"]
+                                sample_stp[day_index, channel_start_index_sensor, ...] = 1
+                                channel_start_index_sensor = channel_start_indices[sensor]
+                                sample_stp[day_index,
+                                channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
+                            else:
+                                channel_start_index_sensor = channel_start_indices[sensor]
+                                sample_stp[day_index,
+                                channel_start_index_sensor:channel_start_index_sensor + image_channel_size, ...] = image
 
             sample_stp = sample_stp.permute(1, 0, 2, 3)
             if self.target_mode == "s2p":
@@ -446,24 +487,10 @@ class CRDataset(Dataset):
                 "target_dw": inputs["target_dw"].permute(1, 0, 2, 3) if inputs["target_dw"] is not None else None,
                 "timestamps": torch.tensor(timestamps),  # Shape: (T)
                 "target_timestamps": torch.tensor(target_timestamps),
-                "time_differences": torch.Tensor(time_differences),  # TODO: implement this correctly.
+                "time_differences": torch.Tensor(time_differences),
                 "roi": roi,
                 "latlong": latlong,
             }
             item_dict = {k: v for k, v in item_dict.items() if v is not None}
 
             return item_dict
-
-        # return {
-        #     "input_images": input_images,  # Shape: (T, C, H, W)
-        #     "target": target_image,  # Shape: (T, C, H, W)
-        #     "target_cloud_mask": target_cloud_mask,  # Shape: (1, 1, H, W)
-        #     "target_shadow_mask": target_shadow_mask,  # Shape: (1, 1, H, W)
-        #     "target_lulc_label": target_lulc_label,  # Shape: (T)
-        #     "target_lulc_map": target_lulc_map,  # Shape: (1, 1, H, W)
-        #     "timestamps": timestamps,  # Shape: (T)
-        #     "input_cloud_masks": input_cloud_masks,  # Shape: (T, 1, H, W)
-        #     "input_shadow_masks": input_shadow_masks,  # Shape: (T, 1, H, W)
-        # }
-
-# TODO: Example usage

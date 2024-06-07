@@ -79,7 +79,12 @@ def process_dw_data(df):
     tqdm.pandas(desc="Processing Land Cover Satellite Patches")
     results = []
     for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-        dw_map = center_crop(row["image_file_path"], size=(256, 256))
+        try:
+            dw_map = center_crop(row["image_file_path"], size=(256, 256))
+        except Exception as e:
+            print(f"Error: {e}. Skipping patch {row['image_file_path']}")
+            df.drop(index, inplace=True)
+            continue
         unique, counts = np.unique(dw_map, return_counts=True)
         result = {f"pixel_count_{str(int(i))}": 0 for i in range(9)}
         result["pixel_count_nan"] = 0
@@ -226,18 +231,18 @@ if __name__ == "__main__":
     DATA_PATH = "/scratch/allclear/dataset_v3/dataset_30k_v4"
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_train_20Ksamples.csv")
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/allclear/experimental_scripts/data_prep/v3_distribution_test_4Ksamples.csv")
-    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/train_rois_19k.csv")
+    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/train_rois_19k.csv")
     # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/val_rois_1k.csv")
-    ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/test_rois_3k.csv")
+    # ROIS_METADATA = pd.read_csv("/share/hariharan/cloud_removal/metadata/v4/test_rois_3k.csv")
     # SELECTED_ROIS_FNAME = "test_4k.txt"
     # SELECTED_ROIS_FNAME = "test_4k_v2.txt"
     # SELECTED_ROIS_FNAME = "train_2k.txt"
     # SELECTED_ROIS_FNAME = "dataset_500.txt"
     # SELECTED_ROIS_FNAME = "train_9k.txt"
     # SELECTED_ROIS_FNAME = "train_20k.txt"
-    # SELECTED_ROIS_FNAME = "train_rois_19k.txt"
-    # SELECTED_ROIS_FNAME = "val_rois_1k.txt"
-    SELECTED_ROIS_FNAME = "test_3k.txt"
+    SELECTED_ROIS_FNAME = "train_19k.txt"
+    # SELECTED_ROIS_FNAME = "val_1k.txt"
+    # SELECTED_ROIS_FNAME = "test_3k.txt"
     # SELECTED_ROIS = ROIS
     # with open(f"/share/hariharan/cloud_removal/metadata/v3/{SELECTED_ROIS_FNAME}") as f:
     #     SELECTED_ROIS = f.read().splitlines()
@@ -246,12 +251,12 @@ if __name__ == "__main__":
     METADATA_GROUP = ['s1', 's2_toa', 'landsat8', 'landsat9']
     # SATS = ['s1', 's2_toa', 'dw', 'landsat8', 'landsat9']
     # SATS = ['s2_toa']
-    SATS = ['landsat8', 'landsat9']
+    # SATS = ['landsat8', 'landsat9']
     # SATS = ['s2_toa', 's1', 'cld_shdw', 'dw']
     # SATS = ['s2_toa', 's1']
     # SATS = ['s1']
     # SATS = ['cld_shdw']
-    # SATS = ["dw"]
+    SATS = ["dw"]
     # SATS = ['cld_shdw']
 
     # WORKERS = 16

@@ -5,6 +5,7 @@ allclear/baselines/CTGAN/Pretrain
 baselines_retraining
 demos_copy
 UnCRtainTS
+results/*
 
 allclear/baselines/PMAA/checkpoints0515
 allclear/baselines/PMAA/runs29

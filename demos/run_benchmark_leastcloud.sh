@@ -21,7 +21,7 @@ TX=3
 BASELINE_BASE_PATH='/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/'
 WEIGHT_FOLDER="/share/hariharan/ck696/allclear/baselines/UnCRtainTS_mg/model/src/results"
 
-EXP_OUTPUT_PATH="/share/hariharan/cloud_removal/results/baselines_v2/baseline_1proi_v2/[leastcloudy]_on_[AC]"
+EXP_OUTPUT_PATH="results/baseline/leastcloudy"
 EXP_NAME="leastcloudy"
 # UTILISE_CONFIG="/share/hariharan/ck696/allclear/baselines/U-TILISE/configs/default+config_sen12_wo_s1.yaml"
 # UTILISE_CHP='/share/hariharan/ck696/allclear/baselines/U-TILISE/checkpoints/utilise_sen12mscrts_wo_s1.pth'

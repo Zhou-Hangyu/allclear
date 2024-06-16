@@ -39,11 +39,15 @@ This section provides instructions on how to use the benchmark with the `UnCRtai
 3. To run the benchmark and see some results, execute the `run_benchmark.sh` script located in the `demos` directory:
 
     ```bash
-    bash demos/run_benchmark.sh
+    # Run the Least Cloudy baseline
+    bash demos/run_benchmark_leastcloud.sh 
+
+    # Run the pretrained UnCRtainTS
+    bash demos/run_uncrtaints_pretrained.sh 
+
+    # Run the UnCRtainTS pretrained on our full allclear dataset 
+    bash demos/run_uncrtaints_allclear100pc.sh 
     ```
-
-This script will run the benchmark using the `UnCRtainTS` model and display some results. You can modify the script to use different models or parameters.
-
 
 ## License
 
@@ -56,11 +60,3 @@ This project is licensed under the [MIT License](LICENSE).
   * They will have a wrapper in `allclear/baselines.py` with uniform input/output format for easy comparison.
 * The `demo` folder contains minimal code to demonstrate the use of the dataset and benchmark.
 * For all other code, please put them in the `/experimental_scripts` folder for now.
-
-## TODOs
-- [ ] Stratified evaluation on various factors
-  - Cloud & shadow coverage percentage.
-  - Land cover type.
-  - Time (season).
-  - Geolocation.
-  - Satellite type.

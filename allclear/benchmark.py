@@ -10,14 +10,6 @@ import pandas as pd
 current_dir = os.getcwd()
 sys.path.append(current_dir)
 
-# if "ck696" in os.getcwd():
-#     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
-#     sys.path.append("/share/hariharan/ck696/allclear/baselines")
-#     sys.path.append("/share/hariharan/ck696/allclear")
-# else:
-#     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
-#     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
-
 from allclear.utils import plot_lulc_metrics, benchmark_visualization #, benchmark_visualization_with_mask
 
 import torch.multiprocessing
@@ -181,8 +173,6 @@ class Metrics:
             g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
             g /= g.sum()
             return g.view(1, 1, -1) * g.view(1, -1, 1)
-
-
 
         # Create a gaussian kernel, applied to each channel separately
         window = gaussian_window(window_size, 1.5).repeat(outputs.shape[1], 1, 1, 1)
@@ -412,10 +402,6 @@ class BenchmarkEngine:
         if self.args.sen12mscrts_reset_datetime == "zeros":
             dates = torch.zeros_like(dates)
 
-        # print(f"Input Images: {x.shape}")
-        # print(f"Target Images: {y.shape}")
-
-
         inputs = {
             "input_images": x.permute(0,2,1,3,4),   # bs x c x t x h x w    
             "input_cld_shdw": in_m,                 # bs x c x t x h x w
@@ -524,11 +510,10 @@ class BenchmarkEngine:
         metrics_all = {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []}
         for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
 
+            # if eval_iter == 10: 
+            #     break
+
             self.args.eval_iter = eval_iter
-            # if self.args.eval_iter == 200:
-            #     break
-            # if self.args.eval_iter == 10:
-            #     break
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
                 data = self.convert_data_format_from_sen12mscrts(data)

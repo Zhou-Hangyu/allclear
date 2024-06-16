@@ -19,7 +19,7 @@ TX=3
 # BASELINE_BASE_PATH='baselines/UnCRtainTS/model/src/'
 BASELINE_BASE_PATH='baselines/UnCRtainTS/model/src/'
 WEIGHT_FOLDER="results"
-EXP_OUTPUT_PATH="results/baselines_v2/uncrtaints_1proi_v2/[diagonal]_on_[AC]"
+EXP_OUTPUT_PATH="results/uncrtaints/pretrained"
 EXP_NAME="diagonal_1"
 
 #export PYTHONPATH="${PYTHONPATH}:/share/hariharan/cloud_removal/allclear/allclear"

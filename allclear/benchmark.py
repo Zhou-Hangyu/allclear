@@ -7,13 +7,16 @@ from tqdm import tqdm
 import sys, os, json
 import pandas as pd
 
-if "ck696" in os.getcwd():
-    sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
-    sys.path.append("/share/hariharan/ck696/allclear/baselines")
-    sys.path.append("/share/hariharan/ck696/allclear")
-else:
-    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
-    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
+current_dir = os.getcwd()
+sys.path.append(current_dir)
+
+# if "ck696" in os.getcwd():
+#     sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
+#     sys.path.append("/share/hariharan/ck696/allclear/baselines")
+#     sys.path.append("/share/hariharan/ck696/allclear")
+# else:
+#     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
+#     sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
 
 from allclear.utils import plot_lulc_metrics, benchmark_visualization #, benchmark_visualization_with_mask
 
@@ -247,9 +250,13 @@ class BenchmarkEngine:
             print(f"Loading AllClear Dataset from {self.args.dataset_fpath}...")
             with open(self.args.dataset_fpath, "r") as f:
                 dataset = json.load(f)
-            print(f"Loading clod shadow masks from {self.args.cld_shdw_fpaths}...")
-            with open(self.args.cld_shdw_fpaths, "r") as f:
-                cld_shdw_fpaths = json.load(f)
+
+            if self.args.cld_shdw_fpaths is not None and self.args.cld_shdw_fpaths != "":
+                print(f"Loading clod shadow masks from {self.args.cld_shdw_fpaths}...")
+                with open(self.args.cld_shdw_fpaths, "r") as f:
+                    cld_shdw_fpaths = json.load(f)
+            else:
+                cld_shdw_fpaths = None
             print(f"Selected ROIs: {self.args.selected_rois}")
             selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
             
@@ -664,7 +671,6 @@ class BenchmarkEngine:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Benchmarking Engine for Models and Datasets")
-    parser.add_argument("--baseline-base-path", type=str, help="Path to the baseline codebase")
     parser.add_argument("--dataset-fpath", type=str, default="/share/hariharan/cloud_removal/metadata/v3/s2p_tx3_test_4k_v1.json" ,required=True, help="Path to dataset metadata file")
     parser.add_argument("--model-name", type=str, required=True, help="Model to use for benchmarking")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size for data loading")
@@ -693,6 +699,7 @@ def parse_arguments():
     
     uc_args = parser.add_argument_group("UnCRtainTS Arguments")
     uc_args.add_argument("--uc-exp-name", type=str, default="noSAR_1", help="Experiment name for UnCRtainTS")
+    uc_args.add_argument("--uc-baseline-base-path", type=str, help="Path to the baseline codebase")
     uc_args.add_argument("--uc-root1", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 1 for UnCRtainTS")
     uc_args.add_argument("--uc-root2", type=str, default="/share/hariharan/cloud_removal/SEN12MSCRTS", help="Root 2 for UnCRtainTS")
     uc_args.add_argument("--uc-root3", type=str, default="/share/hariharan/cloud_removal/SEN12MSCR", help="Root 3 for UnCRtainTS")
@@ -735,6 +742,12 @@ def parse_arguments():
     return args
 
 if __name__ == "__main__":
+
+
+    # Get the current working directory
+    current_dir = os.getcwd()
+    print(f"Current working directory: {current_dir}")
+    
     benchmark_args = parse_arguments()
     if benchmark_args.model_name == "uncrtaints":
         from baselines.UnCRtainTS.model.parse_args import create_parser

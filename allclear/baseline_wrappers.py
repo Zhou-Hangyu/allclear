@@ -4,19 +4,13 @@ import os, json, datetime, sys
 from datetime import datetime
 import torch
 import torch.nn.functional as F
-# from allclear import benchmark_visualization
-
 import logging
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
-if "ck696" in os.getcwd():
-    sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/model")
-    sys.path.append("/share/hariharan/ck696/allclear/baselines")
-    sys.path.append("/share/hariharan/ck696/allclear")
-else:
-    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/model/")
-    sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/")
+current_dir = os.getcwd()
+sys.path.append(current_dir)
+sys.path.append(os.path.join(current_dir, "baselines/UnCRtainTS/model"))
 
 def s2_boa2toa(s2_boa):
     """Cast Sentinel-2 Bottom of Atmosphere (BOA) data to the shape of Top of Atmosphere (TOA) data.
@@ -68,7 +62,11 @@ class UnCRtainTS(BaseModel):
         self.model = get_model(self.config).to(self.device)
 
         ckpt_n = f"_epoch_{self.config.resume_at}" if self.config.resume_at > 0 else ""
-        load_checkpoint(self.config, self.config.weight_folder, self.model, f"model{ckpt_n}")
+        print(f"Loading checkpoint: {self.config.weight_folder}/model{ckpt_n}")
+        load_checkpoint(self.config, 
+                        os.path.join(self.args.uc_baseline_base_path, self.config.weight_folder), 
+                        self.model, 
+                        f"model{ckpt_n}")
         self.model.eval()
 
         # if "noSAR_1" in self.args.experiment_name or self.args.uc_s1 == 0:
@@ -85,11 +83,11 @@ class UnCRtainTS(BaseModel):
         from baselines.UnCRtainTS.model.src.utils import str2list
         from baselines.UnCRtainTS.model.parse_args import create_parser
         parser = create_parser(mode="test")
-        logger.info(f"Using UnCRtainTS config: {self.args.baseline_base_path}")
+        logger.info(f"Using UnCRtainTS config: {self.args.uc_baseline_base_path}")
         logger.info(f"Using UnCRtainTS weight_folder: {self.args.weight_folder}")
         logger.info(f"Using UnCRtainTS experiment_name: {self.args.experiment_name}")
 
-        conf_path = os.path.join(self.args.baseline_base_path, self.args.weight_folder, self.args.experiment_name, "conf.json")
+        conf_path = os.path.join(self.args.uc_baseline_base_path, self.args.weight_folder, self.args.experiment_name, "conf.json")
         with open(conf_path, "r") as f:
             model_config = json.load(f)
             t_args = argparse.Namespace()

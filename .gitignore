@@ -25,6 +25,9 @@ allclear/baselines/U-TILISE/checkpoints
 temp
 utils
 
+data
+allclear2.egg-info
+
 allclear.egg-info
 data
 experiments

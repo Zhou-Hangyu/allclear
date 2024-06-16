@@ -15,9 +15,14 @@ pip install -e .
 This repository contains multiple baseline repo as submodules. To include them in the project, run the following command:
 
 ```bash
+cd allclear
 git submodule update --init --recursive
 ```
 
+Run `. preprocess.sh` to download the demo test dataset.zip and metadata json file.
+```bash
+. preprocess.sh
+```
 
 ## Benchmark Usage
 

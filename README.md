@@ -5,22 +5,23 @@
 ![Geographical distribution of AllClear](images/allclear.svg)
 
 ## Setup
-`AllClear` comes with minimal package requirements. It can be easily installed using pip. 
+<!-- `AllClear` comes with minimal package requirements. It can be easily installed using pip. 
 Please navigate to the root directory of this project and run the following commands:
 
 ```bash
 pip install -e .
-```
+``` -->
 
-This repository contains multiple baseline repo as submodules. To include them in the project, run the following command:
-
+Please navigate to the root directory of this project and run the following commands:
 ```bash
+# Clone the repository
+git clone https://github.com/Zhou-Hangyu/allclear.git
+
+# Obtain the submodules
 cd allclear
 git submodule update --init --recursive
-```
 
-Run `. preprocess.sh` to download the demo test dataset.zip and metadata json file.
-```bash
+# Download the test dataset.zip and metadata json file.
 . preprocess.sh
 ```
 

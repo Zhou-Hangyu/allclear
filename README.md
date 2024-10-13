@@ -2,6 +2,8 @@
 
 `AllClear` is a comprehensive dataset/benchmark for cloud detection and removal. 
 
+**Notice:** We are actively cleaning up the codebase and uploading our dataset for public access. Stay tuned!
+
 ![Geographical distribution of AllClear](images/allclear.svg)
 
 ## Setup

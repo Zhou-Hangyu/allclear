@@ -10,7 +10,7 @@ import pandas as pd
 current_dir = os.getcwd()
 sys.path.append(current_dir)
 
-from allclear.utils import plot_lulc_metrics, benchmark_visualization #, benchmark_visualization_with_mask
+from allclear.utils import plot_lulc_metrics, benchmark_visualization
 
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system') # avoid running out of shared memory handles (https://github.com/pytorch/pytorch/issues/11201)
@@ -24,10 +24,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 class Metrics:
     """
+    This class computes the pixel-wise metrics for the outputs agains the target ground-truths.
+    It ignores the cloud and shadow regions in the target images using the cloud and shadow masks.
+
     Required shapes:
-    - outputs: (B, T, C, H, W)
-    - targets: (B, 1, C, H, W)
-    - masks: (B, 1, 1, H, W)
+    - outputs: (Batch_size, Time, Channel, Height, Width)
+    - targets: (Batch_size, 1, Channel, Height, Width)
+    - masks: (Batch_size, 1, 1, Height, Width)
     """
     def __init__(self, outputs, targets, masks, lulc_maps=None, device=torch.device("cuda"), batch_size=32):
         self.device = torch.device(device)
@@ -38,9 +41,7 @@ class Metrics:
             self.lulc_maps = lulc_maps.reshape(-1, *lulc_maps.shape[2:])
             self.masked_lulc_maps = (self.lulc_maps + 1) * self.masks - 1 # lulc maps are 0-indexed
         self.batch_size = batch_size
-
-        # print(f"Evaluating Masked Metrics using {self.device}...")
-        self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.batch_process(self.masks)
+        self.maes, self.rmses, self.psnrs, self.sams, self.ssims = self.compute_metrics(self.masks)
 
     def evaluate_aggregate(self):
         return {
@@ -51,30 +52,30 @@ class Metrics:
             "SSIM": self.ssims.nanmean().item(),
         }
 
-    def evaluate_strat_lulc(self, mode="map"):
-        """mode can be 'map'. 'label' mode is deprecated."""
+    def evaluate_strat_lulc(self):
+        """Stratified metrics for each Land use land cover class."""
         lulc_metrics = {}
         num_classes = 9
         for c in range(num_classes):
-            if mode == "map":
-                mask = self.masked_lulc_maps == c
-                metrics = self.batch_process(mask)
-                lulc_metrics[c] = {
-                    "MAE": metrics[0].nanmean().item(),
-                    "RMSE": metrics[1].nanmean().item(),
-                    "PSNR": metrics[2].nanmean().item(),
-                    "SAM": metrics[3].nanmean().item(),
-                    "SSIM": metrics[4].nanmean().item(),
-                }
-            else:
-                raise ValueError(f"Invalid mode: {mode}")
+            mask = self.masked_lulc_maps == c
+            metrics = self.compute_metrics(mask)
+            lulc_metrics[c] = {
+                "MAE": metrics[0].nanmean().item(),
+                "RMSE": metrics[1].nanmean().item(),
+                "PSNR": metrics[2].nanmean().item(),
+                "SAM": metrics[3].nanmean().item(),
+                "SSIM": metrics[4].nanmean().item(),
+            }
         return lulc_metrics
 
 
-    def batch_process(self, masks):
+    def compute_metrics(self, masks):
+        """
+        Compute metrics in batches to avoid running out of memory. 
+        Use GPU to speed up the computation.
+        """
         num_batches = (self.outputs.shape[0] + self.batch_size - 1) // self.batch_size
         maes, rmses, psnrs, sams, ssims = [], [], [], [], []
-
 
         for i in range(num_batches):
             start = i * self.batch_size
@@ -235,41 +236,15 @@ class BenchmarkEngine:
         return model
 
     def setup_data_loader(self):
-
         if self.args.dataset_type == "AllClear":
             print(f"Loading AllClear Dataset from {self.args.dataset_fpath}...")
             with open(self.args.dataset_fpath, "r") as f:
                 dataset = json.load(f)
-
-            if self.args.cld_shdw_fpaths is not None and self.args.cld_shdw_fpaths != "":
-                print(f"Loading clod shadow masks from {self.args.cld_shdw_fpaths}...")
-                with open(self.args.cld_shdw_fpaths, "r") as f:
-                    cld_shdw_fpaths = json.load(f)
-            else:
-                cld_shdw_fpaths = None
+            print(f"Loading cloud and shadow masks from {self.args.cld_shdw_fpaths}...")
+            with open(self.args.cld_shdw_fpaths, "r") as f:
+                cld_shdw_fpaths = json.load(f)
             print(f"Selected ROIs: {self.args.selected_rois}")
             selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
-            
-            if self.args.unique_roi == 1:
-                pass
-                # raise NotImplementedError("Unique ROI is deprecated for AllClear dataset")
-                # selected_rois = "unique"
-                # print(f"Number of total ROIs: {len(dataset)}")
-                # unique_dataset = {}
-                # unique_indices = []
-                # count = 0
-                # prev_id = "0"
-                # for ID, info in dataset.items():
-                #     roi_id = info["roi"][0]
-                #     if prev_id == roi_id or roi_id in unique_indices:
-                #         unique_indices.append(roi_id)
-                #     else:
-                #         unique_dataset[str(count)] = dataset[ID]
-                #         count += 1
-                #         prev_id = roi_id
-                # dataset = unique_dataset
-                # # dataset = {str(i): self.dataset[ID] for i, ID in enumerate(dataset.keys())} # reindex the dataset
-                # print(f"Number of unique ROIs: {len(dataset)}")
             
             if self.args.do_preprocess_for_sen12mstrcs == True:
                 print("Enabling Customized Preprocessing SEN12MS-CR-TS dataset for SEN12MS-CR")
@@ -287,25 +262,19 @@ class BenchmarkEngine:
             return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
         elif self.args.dataset_type == "SEN12MS-CR-TS":
-            if "ck696" in os.getcwd():
-                sys.path.append("/share/hariharan/ck696/allclear/baselines/UnCRtainTS/data")
-            else:
-                sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/UnCRtainTS/data/")
+            sys.path.append("./baselines/UnCRtainTS/data/")
             from SEN12MSCRTS import SEN12MSCRTS
-            dt_test = SEN12MSCRTS(split='test', region='all', 
+            dt_test = SEN12MSCRTS(split='test', 
+                                  region='all', 
                                   sample_type="cloudy_cloudfree", 
-                                    n_input_samples=self.args.tx, 
-                                    rescale_method=self.args.sen12mscrts_rescale_method,
-                                    )
-            
+                                  n_input_samples=self.args.tx, 
+                                  rescale_method=self.args.sen12mscrts_rescale_method,
+                                )
             return DataLoader(dt_test, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         
         elif self.args.dataset_type == "CTGAN":
-
-            if "ck696" in os.getcwd():
-                sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
-            else:
-                sys.path.append("/share/hariharan/cloud_removal/allclear/baselines/PMAA")
+            # TODO: fix this.
+            sys.path.append("./baselines/PMAA")
 
             from dataset_new import Sen2_MTC
             
@@ -331,6 +300,7 @@ class BenchmarkEngine:
             return test_loader
         
         elif self.args.dataset_type == "STGAN":
+            # TODO: fix this.
 
             if "ck696" in os.getcwd():
                 sys.path.append("/share/hariharan/ck696/allclear/baselines/PMAA")
@@ -509,10 +479,6 @@ class BenchmarkEngine:
         consistent_cld_shdw_percents = []
         metrics_all = {"MAE": [], "RMSE": [], "PSNR": [], "SAM": [], "SSIM": []}
         for eval_iter, data in tqdm(enumerate(self.data_loader), total=len(self.data_loader), desc="Evaluating Batches"):
-
-            # if eval_iter == 10: 
-            #     break
-
             self.args.eval_iter = eval_iter
 
             if self.args.dataset_type == "SEN12MS-CR-TS":
@@ -570,7 +536,6 @@ class BenchmarkEngine:
             data["output"] = outputs["output"]
             if self.args.draw_vis == 1:
                 benchmark_visualization(data, self.args, metrics=metrics)
-            # benchmark_visualization_with_mask(data, self.args, metrics=metrics)
 
             # Store per-batch metrics
             for key in per_batch_metrics:
@@ -578,12 +543,10 @@ class BenchmarkEngine:
             
             # Store stratified metrics for each LULC class
             if self.args.dataset_type == "AllClear": 
-                strat_lulc_metrics = metrics.evaluate_strat_lulc(mode="map")
+                strat_lulc_metrics = metrics.evaluate_strat_lulc()
                 for lulc_class, class_metrics in strat_lulc_metrics.items():
-                    # print(lulc_class, class_metrics)
                     for metric, value in class_metrics.items():
                         lulc_metrics_all[lulc_class][metric].append(value)
-                        # print(value)
 
             # Clear lists for the next batch
             outputs_all.clear()
@@ -647,12 +610,6 @@ class BenchmarkEngine:
         else:
             return final_results
 
-    def cleanup(self):
-        pass
-
-    def save_results(self, output, target, timestamp, res_dir):
-        pass
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Benchmarking Engine for Models and Datasets")
@@ -671,7 +628,6 @@ def parse_arguments():
     parser.add_argument("--do-preprocess-for-sen12mstrcs", action="store_true", help="Preprocess the data before running the model")
     parser.add_argument("--dataset-type", type=str, default="AllClear", 
                         choices=["AllClear","STGAN", "CTGAN", "SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
-    # parser.add_argument("--dataset-type", type=str, default="SEN12MS-CR", choices=["SEN12MS-CR", "SEN12MS-CR-TS"], help="Type of dataset")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")
     parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
     parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
@@ -720,19 +676,10 @@ def parse_arguments():
     sen12mscrts_args.add_argument("--sen12mscrts-reset-datetime", type=str, default="none", choices=["none", "zeros", "min"], help="Reset datetime for SEN12MSCRTS")
     
     ctgan_args = parser.add_argument_group("CTGAN Arguments")
-    # sen12mscrts_args.add_argument("--sen12mscrts-rescale-method", type=str, default="default", choices=["default", "resnet", "allclear"], help="Rescale method for SEN12MSCRTS")
-    # sen12mscrts_args.add_argument("--sen12mscrts-reset-dates", type=str, default="none", choices=["none", "zeros", "min"], help="Reset dates for SEN12MSCRTS")
-
     args = parser.parse_args()
     return args
 
-if __name__ == "__main__":
-
-
-    # Get the current working directory
-    current_dir = os.getcwd()
-    print(f"Current working directory: {current_dir}")
-    
+if __name__ == "__main__":    
     benchmark_args = parse_arguments()
     if benchmark_args.model_name == "uncrtaints":
         from baselines.UnCRtainTS.model.parse_args import create_parser

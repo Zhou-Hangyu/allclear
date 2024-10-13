@@ -110,7 +110,6 @@ class CRDataset(Dataset):
                  s2_toa_channels=None,
                  max_diff=2,
                  cld_shdw_fpaths=None,
-                 do_preprocess=True,
                  s1_preprocess_mode="default",
                  ):
         if aux_sensors is None:
@@ -132,7 +131,6 @@ class CRDataset(Dataset):
         self.format = format
         self.target_mode = target_mode
         self.max_diff = max_diff
-        self.do_preprocess = do_preprocess
         self.s1_preprocess_mode = s1_preprocess_mode
         if self.format != "stp":
             raise ValueError("The format is not supported.")
@@ -170,7 +168,7 @@ class CRDataset(Dataset):
             cld_shdw_fpath = self.cld_shdw_fpaths[idx]
             if os.path.exists(cld_shdw_fpath):
                 cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
+                cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
                 break
         if torch.rand(1).item() > 0.5:
             cld_shdw = torch.flip(cld_shdw, dims=[1])
@@ -200,33 +198,30 @@ class CRDataset(Dataset):
     def rescale(date, limits):
         return (date - limits[0]) / (limits[1] - limits[0])
 
-    def preprocess(self, image, sensor_name, do_preprocess=True):
-        """Set do_preprocess to False to skip preprocessing for benchmarking purposes."""
-        if not do_preprocess:
-            return image
-        else:
-            if sensor_name in ["s2_toa", "landsat8", "landsat9"]:
-                image = torch.clip(image, 0, 10000) / 10000
-                image = torch.nan_to_num(image, nan=0)
-            elif sensor_name == "s1":
-                if self.s1_preprocess_mode == "default":
-                    image[image < -40] = -40
-                    image[0] = torch.clip(image[0] + 25, 0, 25) / 25
-                    image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
-                    image = torch.nan_to_num(image, nan=-1)
-                elif self.s1_preprocess_mode == "uncrtaints":
-                    dB_min, dB_max = -25, 0
-                    image = np.clip(image, dB_min, dB_max)
-                    image = self.rescale(image, [dB_min, dB_max])
+    def preprocess(self, image, sensor_name):
+        """Preprocess the image."""
+        if sensor_name in ["s2_toa", "landsat8", "landsat9"]:
+            image = torch.clip(image, 0, 10000) / 10000
+            image = torch.nan_to_num(image, nan=0)
+        elif sensor_name == "s1":
+            if self.s1_preprocess_mode == "default":
+                image[image < -40] = -40
+                image[0] = torch.clip(image[0] + 25, 0, 25) / 25
+                image[1] = torch.clip(image[1] + 32.5, 0, 32.5) / 32.5
+                image = torch.nan_to_num(image, nan=-1)
+            elif self.s1_preprocess_mode == "uncrtaints":
+                dB_min, dB_max = -25, 0
+                image = np.clip(image, dB_min, dB_max)
+                image = self.rescale(image, [dB_min, dB_max])
 
-            elif sensor_name == "cld_shdw":
-                image = torch.nan_to_num(image, nan=1)
-            elif sensor_name in ["dw"]:
-                image = image
-            else:  # TODO: Implement preprocessing for other sensors
-                print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
-                image = image
-            return image
+        elif sensor_name == "cld_shdw":
+            image = torch.nan_to_num(image, nan=1)
+        elif sensor_name in ["dw"]:
+            image = image
+        else:  # TODO: Implement preprocessing for other sensors
+            print(f'Preprocessing steps for {sensor_name} has not been implemented yet.')
+            image = image
+        return image
 
     @staticmethod
     def extract_date(path):
@@ -257,7 +252,7 @@ class CRDataset(Dataset):
                     fpath = fpath.replace("/scratch/allclear/dataset_v3/",
                                           "/share/hariharan/cloud_removal/MultiSensor/")
                 image = self.load_and_center_crop(fpath, self.channels[sensor], self.center_crop_size)
-                image = self.preprocess(image, sensor, do_preprocess=self.do_preprocess)
+                image = self.preprocess(image, sensor)
                 inputs[sensor].append((timestamp, image))
                 if sensor == self.main_sensor:
                     timestamps.append(timestamp)
@@ -266,7 +261,7 @@ class CRDataset(Dataset):
                         if os.path.exists(cld_shdw_fpath):
                             cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"],
                                                                  self.center_crop_size)
-                            cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
+                            cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
                         else:
                             raise ValueError(f"Cloud shadow file not found: {cld_shdw_fpath}")
                         inputs["input_cld_shdw"].append((timestamp, cld_shdw))
@@ -274,7 +269,7 @@ class CRDataset(Dataset):
                         dw_fpath = fpath.replace("s2_toa", "dw")
                         if os.path.exists(dw_fpath):
                             dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                            dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
+                            dw = self.preprocess(dw, "dw")
                             inputs["input_dw"].append((timestamp, dw))
                         else:
                             inputs["input_dw"].append((timestamp, torch.ones(len(self.channels['dw']),
@@ -308,15 +303,14 @@ class CRDataset(Dataset):
                     fpath):  # Add this line to handle the case when the script is not running on Sun / Bala's server
                 fpath = fpath.replace("/scratch/allclear/dataset_v3/", "/share/hariharan/cloud_removal/MultiSensor/")
             image = self.load_and_center_crop(fpath, self.channels[self.main_sensor], self.center_crop_size)
-            image = self.preprocess(image, self.main_sensor,
-                                    do_preprocess=self.do_preprocess)  # target by default is the main sensor
+            image = self.preprocess(image, self.main_sensor)  # target by default is the main sensor
             inputs["target"] = [(timestamp, image)]
             if "cld_shdw" in self.aux_data:
                 cld_shdw_fpath = fpath.replace("s2_toa", "cld_shdw")
                 if os.path.exists(cld_shdw_fpath):
                     cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"],
                                                          self.center_crop_size)
-                    cld_shdw = self.preprocess(cld_shdw, "cld_shdw", do_preprocess=self.do_preprocess)
+                    cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
                 else:
                     raise ValueError(f"Cloud shadow file not found: {cld_shdw_fpath}")
                 inputs["target_cld_shdw"] = cld_shdw.unsqueeze(0)
@@ -334,7 +328,7 @@ class CRDataset(Dataset):
                     print("not ending with tif")
                     dw_fpath = dw_fpath + "/*.tif"
                 dw = self.load_and_center_crop(dw_fpath, self.channels["dw"], self.center_crop_size)
-                dw = self.preprocess(dw, "dw", do_preprocess=self.do_preprocess)
+                dw = self.preprocess(dw, "dw")
                 inputs["target_dw"] = dw.unsqueeze(0)
             else:
                 inputs["target_dw"] = None

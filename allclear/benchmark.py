@@ -510,10 +510,6 @@ class BenchmarkEngine:
                 outputs = self.model.forward(data)
                 outputs_all.append(outputs["output"].cpu())
 
-            if self.args.save_plots:
-                for i in range(self.args.batch_size):
-                    continue
-
             # Compute metrics for the current batch
             batch_outputs = torch.cat(outputs_all, dim=0)
             batch_targets = torch.cat(targets_all, dim=0)
@@ -632,9 +628,7 @@ def parse_arguments():
     parser.add_argument("--selected-rois", type=str, nargs="+", help="Selected ROIs for benchmarking")
     parser.add_argument("--tx", type=int, default=3, help="Number of images in a sample for the dataset")
     parser.add_argument("--experiment-output-path", type=str, default="/share/hariharan/cloud_removal/results/baselines", help="Path to save the experiment results")
-    parser.add_argument("--save-plots", action="store_true", help="Save plots for the experiment")
     parser.add_argument("--eval-bands", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], help="Evaluation bands for the dataset")
-    parser.add_argument("--unique-roi", type=int, default=0, help="0 uses all metadata, 1 uses only unique ROI")
     parser.add_argument("--draw-vis", type=int, default=0, help="0 dont draw, 1 draw results")
     parser.add_argument("--exp-name", type=str, default="exp of no name", help="Experiment name")
     
@@ -695,7 +689,6 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid model name: {benchmark_args.model_name}")
     print("Loading Benchmark Engine...")
-    print(f"Unique ROI: {args.unique_roi}")
     print(f"Model Name: {args.model_name}")
     print(f"Dataset Type: {args.dataset_type}")
     engine = BenchmarkEngine(args)

@@ -2,8 +2,8 @@
 
 Hangyu Zhou, [Chia-Hsiang Kao](https://iandrover.github.io), [Cheng Perng Phoo](https://cpphoo.github.io), [Utkarsh Mall](https://iandrover.github.io), [Bharath Hariharan](https://www.cs.cornell.edu/~bharathh/), [Kavita Bala](http://www.cs.cornell.edu/~kb/)
 
-[![arXiv](https://img.shields.io/badge/arXiv-AllClear-red?style=flat-square)](https://arxiv.org/abs/2410.23891)
-[![Project](https://img.shields.io/badge/project-AllClear-blue?style=flat-square)](https://allclear.cs.cornell.edu)
+[![arXiv](https://img.shields.io/badge/arXiv-AllClear-red)](https://arxiv.org/abs/2410.23891)
+[![Project](https://img.shields.io/badge/project-AllClear-blue)](https://allclear.cs.cornell.edu)
 
 https://www.cs.columbia.edu/~utkarshm/
 

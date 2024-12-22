@@ -9,49 +9,6 @@ import torch.nn.functional as F
 import glob
 
 
-def square_cld_shdw_maxpool(image_size=256):
-    """Generate square cloud & shadow masks."""
-    mask_scale = np.random.choice([16, 32, 64])
-    threshold = np.random.uniform(low=0.1, high=0.25)
-    cld = (torch.rand((1, image_size, image_size)) < threshold / (mask_scale * 2) ** 2).float()
-    shdw = (torch.rand((1, image_size, image_size)) < threshold / (mask_scale * 2) ** 2).float()
-    square_cld = F.max_pool2d(cld, mask_scale + 1, stride=1, padding=int((mask_scale + 1) // 2))
-    square_shdw = F.max_pool2d(shdw, mask_scale + 1, stride=1, padding=int((mask_scale + 1) // 2))
-    square_cld_shdw = torch.cat([square_cld, square_shdw], dim=0)
-    return square_cld_shdw
-
-
-def square_cld_shdw(image_size=256):
-    """Generate square cloud & shadow masks."""
-    mask_scale = np.random.choice([16, 32, 64])
-    threshold = np.random.uniform(low=0.1, high=0.25)
-    num_squares = int(threshold * image_size * image_size / (mask_scale * mask_scale))
-
-    cld = torch.zeros((1, image_size, image_size), dtype=torch.float32)
-    shdw = torch.zeros((1, image_size, image_size), dtype=torch.float32)
-
-    for _ in range(num_squares):
-        x = np.random.randint(0, image_size - mask_scale)
-        y = np.random.randint(0, image_size - mask_scale)
-        cld[:, y:y + mask_scale, x:x + mask_scale] = 1
-
-    for _ in range(num_squares):
-        x = np.random.randint(0, image_size - mask_scale)
-        y = np.random.randint(0, image_size - mask_scale)
-        shdw[:, y:y + mask_scale, x:x + mask_scale] = 1
-
-    square_cld_shdw = torch.cat([cld, shdw], dim=0)
-    return square_cld_shdw
-
-
-def random_opacity(opaque_prob=0.9):
-    """Generate a random opacity value."""
-    if torch.rand(1).item() < opaque_prob:  # opaque
-        return 1
-    else:   # semi-transparent
-        return torch.rand(1).item()
-
-
 def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max_diff=2):
     differences = [abs(dt - aux_sensor_timestamp) for dt in main_sensor_timestamps]
     if min(differences).days > max_diff:
@@ -331,46 +288,6 @@ class CRDataset(Dataset):
                 inputs["target_dw"] = dw.unsqueeze(0)
             else:
                 inputs["target_dw"] = None
-
-        elif self.target_mode == "s2s":
-            if self.cld_shdw_fpaths is None:
-                raise ValueError("Cloud and shadow masks are not available.")
-            synthetic_inputs_main_sensor = copy.deepcopy(inputs_main_sensor)
-            synthetic_clds_shdws = torch.zeros_like(inputs_cld_shdw, dtype=torch.float16)
-            for i in range(inputs_cld_shdw.shape[0]):
-                # sampled_cld_shdw = erode_dilate_cld_shdw(self.sample_cld_shdw()) * random_opacity()
-                sampled_cld_shdw = self.sample_cld_shdw()
-                sampled_cld_shdw[0] *= random_opacity(opaque_prob=0.8)  # cld is set to be opaque with high probability
-                sampled_cld_shdw[1] *= random_opacity(opaque_prob=0)  # shdw is always semi-transparent bc it's not an occlusion
-                squared_cld_shdw = square_cld_shdw()
-                squared_cld_shdw[0] *= random_opacity(opaque_prob=0.8)
-                squared_cld_shdw[1] *= random_opacity(opaque_prob=0)
-                synthetic_cld_shdw = torch.max(sampled_cld_shdw, squared_cld_shdw)
-                synthetic_cld_shdw[1] *= torch.logical_not(synthetic_cld_shdw[0] > 0)  # no shdw on cld
-                synthetic_clds_shdws[i] = synthetic_cld_shdw  # Shape: (T, 2, H, W)
-            # for augmentation v3
-            synthetic_shdws = synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
-            synthetic_shdws[synthetic_shdws == 0] = 1
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * synthetic_shdws
-            synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
-
-            # for augmentation v2
-            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
-            #             1 - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)) - synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
-            # synthetic_inputs_main_sensor = synthetic_inputs_main_sensor * (
-            #             1 - synthetic_clds_shdws[:, 0, ...].unsqueeze(1)) + synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
-
-            # for augmentation v1
-            # synthetic_inputs_main_sensor += synthetic_clds_shdws[:, 0, ...].unsqueeze(1)
-            # synthetic_inputs_main_sensor -= synthetic_clds_shdws[:, 1, ...].unsqueeze(1)
-            synthetic_inputs_main_sensor = torch.clip(synthetic_inputs_main_sensor, 0, 1)
-            inputs['target'] = inputs[self.main_sensor]
-            inputs[self.main_sensor] = [(timestamp, syncld_main_sensor) for timestamp, syncld_main_sensor in
-                                        zip(timestamps_main_sensor, synthetic_inputs_main_sensor)]
-            inputs["target_cld_shdw"] = inputs_cld_shdw if "cld_shdw" in self.aux_data else None
-            inputs["input_cld_shdw"] = torch.max(inputs_cld_shdw, synthetic_clds_shdws)
-            inputs["input_cld_shdw"][1] *= (inputs["input_cld_shdw"][0] > 0)  # no shdw on cld
-            inputs["target_dw"] = inputs_dw if "dw" in self.aux_data else None
 
         # final data organization
         # When a day is missing, insert 1s. (shape: (T, C, H, W) -> (C, T, H, W))

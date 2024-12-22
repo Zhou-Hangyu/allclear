@@ -382,11 +382,8 @@ def benchmark_visualization(inputs, args, metrics=None):
     elif args.dataset_type == "AllClear" and args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
         input_vis_bands = [5,4,3]
         target_vis_bands = [3,2,1]
-    # elif args.dataset_type == "CTGAN":
-    #     input_vis_bands = [0,1,2]
-    #     target_vis_bands = [0,1,2]
-    # else:
-    #     raise ValueError("Invalid dataset type or model name")
+    else:
+        raise ValueError("Invalid dataset type or model name")
     
     for batch_id in range(inputx.size(0)):
 

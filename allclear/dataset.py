@@ -50,7 +50,7 @@ class AllClearDataset(Dataset):
             2: {"roi": ("roi5678", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value2"},
             3: {"roi": ("roi9101", (lat, long)), "s2_toa": [(time, fpath), (time, fpath)], "other_key": "value3"}
         }
-        dataset = CRDataset('dataset.json', ['roi1', 'roi2'], 3)
+        dataset = AllClearDataset('dataset.json', ['roi1', 'roi2'], 3)
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
     """
 
@@ -109,7 +109,6 @@ class AllClearDataset(Dataset):
                 "cld_shdw": [2, 5],
                 "dw": [1],
             }
-
         self.dataset_ids = list(self.dataset.keys())
 
     def __len__(self):
@@ -186,7 +185,6 @@ class AllClearDataset(Dataset):
         return datetime.strptime(date_str, '%Y-%m-%d')
 
     def __getitem__(self, idx):
-        # with Profile() as prof:
         data_id = self.dataset_ids[idx]
         sample = self.dataset[data_id]
         roi = sample["roi"][0]
@@ -279,7 +277,6 @@ class AllClearDataset(Dataset):
                     dw_fpaths = glob.glob(dw_fpath)
                     given_date = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") if isinstance(timestamp, str) else timestamp
                     dw_fpath = min(dw_fpaths, key=lambda path: abs(self.extract_date(path) - given_date))
-                # check if the fiilw is ends with .tif
                 if not dw_fpath.endswith("tif"):
                     print("not ending with tif")
                     dw_fpath = dw_fpath + "/*.tif"
@@ -349,8 +346,6 @@ class AllClearDataset(Dataset):
                 target_image = inputs_main_sensor.permute(1, 0, 2, 3)
                 target_timestamps = timestamps
 
-            # (Stats(prof).strip_dirs().sort_stats(SortKey.TIME).print_stats())
-            benchmark_data = {}
             item_dict = {
                 "data_id": data_id if data_id is not None else None,
                 "input_images": sample_stp,  # Shape: (C1(main+aux), T, H, W)

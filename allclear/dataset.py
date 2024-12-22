@@ -120,7 +120,6 @@ class CRDataset(Dataset):
             self.dataset = dataset
         else:
             self.dataset = {ID: info for ID, info in dataset.items() if info["roi"][0] in selected_rois}
-            # self.dataset = {str(i): self.dataset[ID] for i, ID in enumerate(self.dataset.keys())}  # reindex the dataset
         self.main_sensor = main_sensor
         self.aux_sensors = aux_sensors
         self.sensors = [main_sensor] + aux_sensors

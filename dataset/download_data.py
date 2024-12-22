@@ -271,7 +271,7 @@ def main_download_session(args):
     else:
         rois_df = pd.read_csv(args.rois).iloc[args.start_roi:args.end_roi]
 
-    buffer_distance = args.radius * 1.2
+    buffer_distance = args.radius * 1.2 # Add 20% buffer area to account for edge gaps, caused by map projection.
     rois = [
         (
             ee.Geometry.Point([row['longitude'], row['latitude']]).buffer(buffer_distance).bounds(),

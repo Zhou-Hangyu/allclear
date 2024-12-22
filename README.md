@@ -19,7 +19,7 @@ Please navigate to the root directory of this project and run the following comm
 # Clone the repository
 git clone https://github.com/Zhou-Hangyu/allclear.git
 
-# Obtain the submodules
+# Obtain the baselines
 cd allclear
 git submodule update --init --recursive
 
@@ -51,6 +51,15 @@ This section provides instructions on how to use the benchmark with the `UnCRtai
     # Run the UnCRtainTS pretrained on our full allclear dataset 
     bash demos/run_uncrtaints_allclear100pc.sh 
     ```
+
+## Notes
+* We use [Cloud Optimized GeoTIFF (COG)](http://cogeo.org/) format to store all our GeoTIFF files.
+* The raw data comes with gaps (NaN values) around the boundaries due to map projection. 
+We currently center-crop the images on the fly to get rid of the gaps.
+We are working on post-processing the entire dataset to crop them for good.
+
+## TODOs
+* Add dataset construction packages to the environment.
 
 ## License
 

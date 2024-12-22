@@ -22,19 +22,19 @@ TX=3
 DRAW_VIS=0
 
 python allclear/benchmark.py \
-  --dataset-fpath $DATASET_PATH \
+  --exp-name $EXP_NAME \
+  --experiment-output-path $EXP_OUTPUT_PATH \
   --model-name $MODEL_NAME \
   --batch-size $BATCH_SIZE \
   --num-workers $NUM_WORKERS \
   --device $DEVICE \
+  --dataset-type $DATASET_TYPE \
+  --dataset-fpath $DATASET_PATH \
   --selected-rois $SELECTED_ROIS \
-  --experiment-output-path $EXP_OUTPUT_PATH \
+  --cld-shdw-fpaths $CLD_SHDW_FPATHS \
   --main-sensor $MAIN_SENSOR \
   --aux-sensor ${AUX_SENSOR[@]} \
   --aux-data ${AUX_DATA[@]} \
   --target-mode $TARGET_MODE \
   --tx $TX \
-  --cld-shdw-fpaths $CLD_SHDW_FPATHS \
-  --exp-name $EXP_NAME \
-  --dataset-type $DATASET_TYPE \
   --draw-vis $DRAW_VIS \

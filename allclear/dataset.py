@@ -17,7 +17,7 @@ def temporal_align_aux_sensors(main_sensor_timestamps, aux_sensor_timestamp, max
         return differences.index(min(differences))
 
 
-class CRDataset(Dataset):
+class AllClearDataset(Dataset):
     """
         Loading and preprocessing satellite imagery data, including main sensor data
         and auxiliary sensor data. This class supports various sensors, cloud and shadow masks, and different

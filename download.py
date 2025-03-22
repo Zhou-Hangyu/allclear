@@ -102,6 +102,8 @@ def download_roi_worker(roi_batch):
             
         # Download file
         success = download_file(url, dest_path, show_progress=False)
+        time.sleep(0.1)
+        
         if success and verify_file(dest_path):
             print(f"Successfully downloaded {filename}")
         elif success:

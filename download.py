@@ -88,7 +88,7 @@ def download_roi_worker(roi_batch):
     data_dir.mkdir(exist_ok=True)
     
     for roi_id in roi_batch:
-        filename = f"roi{roi_id}.tar.gz"
+        filename = f"{roi_id}.tar.gz"
         dest_path = data_dir / filename
         url = f"{BASE_URL}/data/{filename}"
         

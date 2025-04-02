@@ -28,8 +28,8 @@ git clone https://github.com/Zhou-Hangyu/allclear.git
 cd allclear
 git submodule update --init --recursive
 
-# Download the test dataset.zip and metadata json file.
-. preprocess.sh
+# Download the dataset and metadata json file.
+python download.py
 ```
 
 ## Benchmark Usage

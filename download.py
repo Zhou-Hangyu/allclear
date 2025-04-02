@@ -2,15 +2,13 @@ import requests
 from pathlib import Path
 import multiprocessing as mp
 from tqdm import tqdm
-import hashlib
-import os
+import time
+import argparse
 
 # Configuration
 BASE_URL = "http://allclear.cs.cornell.edu/dataset/allclear"
 METADATA_FILES = ["test_rois_3k.txt", "train_rois_19k.txt", "val_rois_1k.txt"]
 CHUNK_SIZE = 8192
-CPUS = 8
-N_CORES = max(1, CPUS - 1)  # Leave one core free
 
 def download_file(url, dest_path, show_progress=True):
     """Download a file with progress bar and return success status"""
@@ -92,8 +90,8 @@ def download_roi_worker(roi_batch):
         dest_path = data_dir / filename
         url = f"{BASE_URL}/data/{filename}"
         
-        # Skip if already downloaded and verified
-        if dest_path.exists() and verify_file(dest_path):
+        # Skip if already downloaded, verified, and extracted
+        if (data_dir / roi_id).exists():
             continue
             
         # Remove if exists but invalid
@@ -105,7 +103,18 @@ def download_roi_worker(roi_batch):
         time.sleep(0.1)
         
         if success and verify_file(dest_path):
-            print(f"Successfully downloaded {filename}")
+            # Extract the tar.gz file
+            try:
+                import tarfile
+                with tarfile.open(dest_path, 'r:gz') as tar:
+                    tar.extractall(path=data_dir)
+                print(f"Successfully downloaded and extracted {filename}")
+                # Remove the tar.gz file after extraction
+                dest_path.unlink()
+            except Exception as e:
+                print(f"Error extracting {filename}: {e}")
+                if dest_path.exists():
+                    dest_path.unlink()
         elif success:
             print(f"Downloaded {filename} but verification failed")
             dest_path.unlink()
@@ -113,6 +122,15 @@ def download_roi_worker(roi_batch):
             print(f"Skipping {filename} - not found on server")
 
 def main():
+    # Add argument parser
+    parser = argparse.ArgumentParser(description='Download dataset with configurable CPU cores')
+    parser.add_argument('--cpus', type=int, default=8,
+                       help='Number of CPU cores to use (default: 8)')
+    args = parser.parse_args()
+    
+    # Calculate N_CORES using args.cpus
+    n_cores = max(1, args.cpus - 1)  # Leave one core free
+    
     # Download metadata files
     print("Downloading metadata files...")
     download_metadata()
@@ -123,12 +141,12 @@ def main():
     print(f"Found {len(roi_ids)} unique ROI IDs")
     
     # Split ROIs into chunks for parallel processing
-    chunk_size = len(roi_ids) // N_CORES + 1
+    chunk_size = len(roi_ids) // n_cores + 1
     roi_chunks = [roi_ids[i:i + chunk_size] for i in range(0, len(roi_ids), chunk_size)]
     
     # Download ROIs in parallel
-    print(f"\nDownloading ROIs using {N_CORES} processes...")
-    with mp.Pool(N_CORES) as pool:
+    print(f"\nDownloading ROIs using {n_cores} processes...")
+    with mp.Pool(n_cores) as pool:
         pool.map(download_roi_worker, roi_chunks)
     
     print("\nDownload completed!")

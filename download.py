@@ -50,19 +50,31 @@ def verify_file(file_path):
 
 def download_metadata():
     """Download metadata files"""
-    metadata_dir = Path("metadata")
-    metadata_dir.mkdir(exist_ok=True)
-    
-    for filename in METADATA_FILES:
-        dest_path = metadata_dir / filename
-        url = f"{BASE_URL}/metadata/{filename}"
-        
-        if dest_path.exists():
-            print(f"Metadata file {filename} already exists")
-            continue
-            
-        print(f"Downloading metadata: {filename}")
-        download_file(url, dest_path)
+    dest_path = Path("metadata")
+    dest_path.mkdir(exist_ok=True)
+    filename = "metadata.tar.gz"
+    url = f"{BASE_URL}/{filename}"
+    success = download_file(url, dest_path)
+
+    if success and verify_file(dest_path):
+        # Extract the tar.gz file
+        try:
+            import tarfile
+            with tarfile.open(dest_path, 'r:gz') as tar:
+                tar.extractall(path=dest_path)
+            print(f"Successfully downloaded and extracted {filename}")
+            # Remove the tar.gz file after extraction
+            dest_path.unlink()
+        except Exception as e:
+            print(f"Error extracting {filename}: {e}")
+            if dest_path.exists():
+                dest_path.unlink()
+    elif success:
+        print(f"Downloaded {filename} but verification failed")
+        dest_path.unlink()
+    else:
+        print(f"Skipping {filename} - not found on server")
+
 
 def load_roi_list():
     """Load and combine all ROI IDs from metadata files"""
@@ -70,7 +82,7 @@ def load_roi_list():
     roi_ids = set()
     
     for filename in METADATA_FILES:
-        file_path = metadata_dir / filename
+        file_path = metadata_dir / "rois" / filename
         if not file_path.exists():
             print(f"Warning: {filename} not found")
             continue

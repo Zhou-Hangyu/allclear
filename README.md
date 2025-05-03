@@ -63,8 +63,8 @@ This section provides instructions on how to use the benchmark with the `UnCRtai
 We currently center-crop the images on the fly to get rid of the gaps.
 We are working on post-processing the entire dataset to crop them for good.
 
-## TODOs
-* Add dataset construction packages to the environment.
+## Dataset Download
+* You can download the dataset by running [downloading.py](https://github.com/Zhou-Hangyu/allclear/blob/main/download.py). This script will download the zip files. For the dataset split, please check the metadata files.
 
 ## License
 

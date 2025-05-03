@@ -64,7 +64,49 @@ We currently center-crop the images on the fly to get rid of the gaps.
 We are working on post-processing the entire dataset to crop them for good.
 
 ## Dataset Download
-* You can download the dataset by running [downloading.py](https://github.com/Zhou-Hangyu/allclear/blob/main/download.py). This script will download the zip files. For the dataset split, please check the metadata files.
+You can download the dataset by running `python download.py` in the root directory of this project. This script will download the entire AllClear dataset, along with the metadata files. 
+
+### Metadata
+The metadata files are grouped into three folders: `data`, `datasets`, and `rois`.
+* `data` contains metadata for the raw satellite images, grouped by satellite sensor.
+* `datasets` contains metadata for the datasets we created. The naming convention is `{dataset_split}_{input_sequence_length}_{sensor_list}_{percentage_of_data_used}(_{1proi}).json`.
+  * `dataset_split` can be `train`, `val`, or `test`.
+  * `input_sequence_length` is the number of frames in the input sequence. `tx3` means 3-frame input, `tx12` means 12-frame input.
+  * `sensor_list` is a list of satellite sensors used in the dataset. `s2-s1` means S2 and S1, `s2-s1-landsat` means S2, S1, and Landsat8/9.
+  * `percentage_of_data_used` is the percentage of data used to create the dataset, e.g. `100pct` means 100% of the data is used.
+  * `1proi` indicates that the dataset is created by randomly sampling 1 sample in each ROI. We use this to create a lightweight test set.
+* `rois` contains metadata for the regions of interest (ROIs) we created.
+
+Here is the list of metadata files:
+```
+.
+├── data
+│ ├── dw_metadata.csv
+│ ├── landsat8_metadata.csv
+│ ├── landsat9_metadata.csv
+│ ├── s1_metadata.csv
+│ └── s2_metadata.csv
+├── datasets
+│ ├── test_tx3_s2-s1_100pct_1proi.json
+│ ├── test_tx3_s2-s1_100pct.json
+│ ├── test_tx3_s2-s1-landsat_100pct_1proi.json
+│ ├── test_tx3_s2-s1-landsat_100pct.json
+│ ├── train_tx12_s2-s1_100pct.json
+│ ├── train_tx12_s2-s1_3.4pct.json
+│ ├── train_tx3_s2-s1_100pct.json
+│ ├── train_tx3_s2-s1_10pct.json
+│ ├── train_tx3_s2-s1_1pct.json
+│ ├── train_tx3_s2-s1_3.4pct.json
+│ ├── train_tx3_s2-s1-landsat_100pct.json
+│ ├── train_tx3_s2-s1-landsat_3.4pct.json
+│ ├── val_tx12_s2-s1_100pct.json
+│ └── val_tx3_s2-s1-landsat_100pct.json
+├── rois
+│ ├── rois_metadata.csv
+│ ├── test_rois_3k.txt
+│ ├── train_rois_19k.txt
+│ └── val_rois_1k.txt
+```
 
 ## License
 

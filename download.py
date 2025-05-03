@@ -7,7 +7,6 @@ import argparse
 
 # Configuration
 BASE_URL = "http://allclear.cs.cornell.edu/dataset/allclear"
-METADATA_FILES = ["test_rois_3k.txt", "train_rois_19k.txt", "val_rois_1k.txt"]
 CHUNK_SIZE = 8192
 
 def download_file(url, dest_path, show_progress=True):
@@ -81,7 +80,7 @@ def load_roi_list():
     metadata_dir = Path("metadata")
     roi_ids = set()
     
-    for filename in METADATA_FILES:
+    for filename in ["test_rois_3k.txt", "train_rois_19k.txt", "val_rois_1k.txt"]:
         file_path = metadata_dir / "rois" / filename
         if not file_path.exists():
             print(f"Warning: {filename} not found")

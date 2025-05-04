@@ -49,10 +49,11 @@ def verify_file(file_path):
 
 def download_metadata():
     """Download metadata files"""
-    dest_path = Path("metadata")
-    dest_path.mkdir(exist_ok=True)
+    metadata_dir = Path("metadata")
+    metadata_dir.mkdir(exist_ok=True)
     filename = "metadata.tar.gz"
     url = f"{BASE_URL}/{filename}"
+    dest_path = metadata_dir / filename
     success = download_file(url, dest_path)
 
     if success and verify_file(dest_path):

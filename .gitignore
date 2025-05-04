@@ -45,3 +45,6 @@ experimental_scripts
 *.out
 *.ipynb_checkpoints
 *__pycache__
+
+baselines/DAE
+baselines/SimpleUnet

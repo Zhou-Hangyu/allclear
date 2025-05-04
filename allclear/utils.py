@@ -376,10 +376,7 @@ def benchmark_visualization(inputs, args, metrics=None):
     input_vis_bands = [3,2,1]
     target_vis_bands = [3,2,1]
 
-    if args.dataset_type == "SEN12MS-CR-TS" and args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
-        input_vis_bands = [5,4,3]
-        target_vis_bands = [3,2,1]
-    elif args.dataset_type == "AllClear" and args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
+    if args.model_name == "uncrtaints" and args.exp_name.lower() == "diagonal_1":
         input_vis_bands = [5,4,3]
         target_vis_bands = [3,2,1]
     else:
@@ -402,9 +399,9 @@ def benchmark_visualization(inputs, args, metrics=None):
                         size=12, y=.99)
             except:
                 if metrics is not None:
-                    fig.suptitle(f"""Dataset: {args.dataset_type} | Experiment: {args.exp_name} \n Data id: {data_id} | PSNR: {metrics.psnrs[batch_id].item():.2f} | SSIM: {metrics.ssims[batch_id].item():.2f} | SAM: {metrics.sams[batch_id].item():.2f} | MAE: {metrics.maes[batch_id].item():.2f}""", size=12, y=.99)
+                    fig.suptitle(f"""Dataset: AllClear | Experiment: {args.exp_name} \n Data id: {data_id} | PSNR: {metrics.psnrs[batch_id].item():.2f} | SSIM: {metrics.ssims[batch_id].item():.2f} | SAM: {metrics.sams[batch_id].item():.2f} | MAE: {metrics.maes[batch_id].item():.2f}""", size=12, y=.99)
                 else:
-                    fig.suptitle(f"""Dataset: {args.dataset_type} | Experiment: {args.exp_name} \n Data id: {data_id}""", size=12, y=.99)
+                    fig.suptitle(f"""Dataset: AllClear | Experiment: {args.exp_name} \n Data id: {data_id}""", size=12, y=.99)
                 pass 
         
             for frame_id in range(0,3):
@@ -447,10 +444,10 @@ def benchmark_visualization(inputs, args, metrics=None):
             # plt.pause(0.1)
     
             if args.model_name.lower() == "uncrtaints":
-                fpath = f"""/share/hariharan/cloud_removal/results/visualization-unc-{args.dataset_type}/"""
+                fpath = f"""/share/hariharan/cloud_removal/results/visualization-unc-AllClear/"""
                 if not os.path.exists(fpath):
                     os.makedirs(fpath)
-                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-unc-{args.dataset_type}/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
+                plt.savefig(f"""/share/hariharan/cloud_removal/results/visualization-unc-AllClear/vm{value_multiplier}__{data_id}__{args.model_name}_[{args.exp_name}].png""")
             elif args.model_name.lower() == "pmaa":
                 if not os.path.exists(f"/share/hariharan/cloud_removal/results/visualization-pmaa"):
                     os.makedirs(f"/share/hariharan/cloud_removal/results/visualization-pmaa")

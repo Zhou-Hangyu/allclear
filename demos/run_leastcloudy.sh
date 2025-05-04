@@ -10,8 +10,7 @@ NUM_WORKERS=4
 DEVICE="cuda:0"
 
 # Benchmark Settings
-DATASET_TYPE="AllClear"
-DATASET_PATH="metadata/test_tx3_s2-s1_100pct_1proi.json"
+DATASET_PATH="metadata/datasets/test_tx3_s2-s1_100pct_1proi.json"
 SELECTED_ROIS='all'
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
@@ -27,7 +26,6 @@ python allclear/benchmark.py \
   --batch-size $BATCH_SIZE \
   --num-workers $NUM_WORKERS \
   --device $DEVICE \
-  --dataset-type $DATASET_TYPE \
   --dataset-fpath $DATASET_PATH \
   --selected-rois $SELECTED_ROIS \
   --main-sensor $MAIN_SENSOR \

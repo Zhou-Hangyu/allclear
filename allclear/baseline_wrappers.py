@@ -130,7 +130,7 @@ class UnCRtainTS(BaseModel):
         inputs["target"] = inputs["target"].permute(0, 2, 1, 3, 4)[:,:,:self.S2_BANDS]
         inputs["input_cld_shdw"] = torch.clip(inputs["input_cld_shdw"].sum(dim=1),0,1)
 
-        if self.args.dataset_type == "AllClear" and "diagonal_1" in self.args.exp_name:
+        if "diagonal_1" in self.args.exp_name:
             inputs["input_images"] = torch.cat([inputs["input_images"][:,:,-2:], inputs["input_images"][:,:,:-2]], dim=2)
 
         return inputs

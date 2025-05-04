@@ -232,7 +232,6 @@ class AllClearBenchmark:
             aux_data=self.args.aux_data,
             tx=self.args.tx,
             target_mode=self.args.target_mode,
-            do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
         )
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
         

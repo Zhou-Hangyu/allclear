@@ -48,7 +48,7 @@ This section provides instructions on how to use the benchmark with the `UnCRtai
 
     ```bash
     # Run the Least Cloudy baseline
-    bash demos/run_benchmark_leastcloud.sh 
+    bash demos/run_leastcloud.sh 
 
     # Run the pretrained UnCRtainTS
     bash demos/run_uncrtaints_pretrained.sh 

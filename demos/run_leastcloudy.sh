@@ -11,9 +11,8 @@ DEVICE="cuda:0"
 
 # Benchmark Settings
 DATASET_TYPE="AllClear"
-DATASET_PATH="data/metadata/s2p_tx3_test_3k_1proi_v1.json"
+DATASET_PATH="metadata/test_tx3_s2-s1_100pct_1proi.json"
 SELECTED_ROIS='all'
-CLD_SHDW_FPATHS="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json"
 MAIN_SENSOR="s2_toa"
 AUX_SENSOR=("s1")
 AUX_DATA=("cld_shdw" "dw")
@@ -31,7 +30,6 @@ python allclear/benchmark.py \
   --dataset-type $DATASET_TYPE \
   --dataset-fpath $DATASET_PATH \
   --selected-rois $SELECTED_ROIS \
-  --cld-shdw-fpaths $CLD_SHDW_FPATHS \
   --main-sensor $MAIN_SENSOR \
   --aux-sensor ${AUX_SENSOR[@]} \
   --aux-data ${AUX_DATA[@]} \

@@ -219,9 +219,6 @@ class AllClearBenchmark:
         print(f"Loading AllClear Dataset from {self.args.dataset_fpath}...")
         with open(self.args.dataset_fpath, "r") as f:
             dataset = json.load(f)
-        print(f"Loading cloud and shadow masks from {self.args.cld_shdw_fpaths}...")
-        with open(self.args.cld_shdw_fpaths, "r") as f:
-            cld_shdw_fpaths = json.load(f)
         print(f"Selected ROIs: {self.args.selected_rois}")
         selected_rois = self.args.selected_rois if (self.args.selected_rois is not None) and ("all" not in self.args.selected_rois)  else "all"
         
@@ -235,7 +232,6 @@ class AllClearBenchmark:
             aux_data=self.args.aux_data,
             tx=self.args.tx,
             target_mode=self.args.target_mode,
-            cld_shdw_fpaths=cld_shdw_fpaths,
             do_preprocess=self.args.do_preprocess,  # NOTE: Set this to False for all baselines
         )
         return DataLoader(dataset, batch_size=self.args.batch_size, shuffle=False, num_workers=self.args.num_workers)
@@ -380,7 +376,6 @@ def parse_arguments():
     parser.add_argument("--aux-sensors", type=str, nargs="*", help="Auxiliary sensors for the dataset")
     parser.add_argument("--aux-data", type=str, nargs="+",default=["cld_shdw", "dw"], help="Auxiliary data for the dataset")
     parser.add_argument("--target-mode", type=str, default="s2p", choices=["s2p", "s2s"], help="Target mode for the dataset")
-    parser.add_argument("--cld-shdw-fpaths", type=str, default="/share/hariharan/cloud_removal/metadata/v3/cld30_shdw30_fpaths_train_20k.json", help="Path to cloud shadow masks")
     parser.add_argument("--do-preprocess", action="store_true", help="Preprocess the data before running the model")
     parser.add_argument("--do-preprocess-for-sen12mstrcs", action="store_true", help="Preprocess the data before running the model")
     parser.add_argument("--input-t", type=int, default=3, help="Number of input time points (for time-series datasets)")

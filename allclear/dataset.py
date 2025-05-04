@@ -66,7 +66,6 @@ class AllClearDataset(Dataset):
                  target_mode="s2s",
                  s2_toa_channels=None,
                  max_diff=2,
-                 cld_shdw_fpaths=None,
                  s1_preprocess_mode="default",
                  ):
         if aux_sensors is None:
@@ -83,7 +82,6 @@ class AllClearDataset(Dataset):
         self.aux_data = aux_data
         self.tx = tx
         self.center_crop_size = center_crop_size
-        self.cld_shdw_fpaths = cld_shdw_fpaths
         self.format = format
         self.target_mode = target_mode
         self.max_diff = max_diff
@@ -113,25 +111,6 @@ class AllClearDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-
-    def sample_cld_shdw(self):
-        """Randomly sample clouds from existing cloud masks in the dataset.
-        cld_shdw_fpaths: list of file path to all cloud and shadow masks in the dataset,
-        where cloud in channel 1, shadow in channel 2 (shape 2xHxW)."""
-        while True:  # Retry until a valid cloud shadow mask is loaded
-            idx = torch.randint(0, len(self.cld_shdw_fpaths), (1,)).item()
-            cld_shdw_fpath = self.cld_shdw_fpaths[idx]
-            if os.path.exists(cld_shdw_fpath):
-                cld_shdw = self.load_and_center_crop(cld_shdw_fpath, self.channels["cld_shdw"], self.center_crop_size)
-                cld_shdw = self.preprocess(cld_shdw, "cld_shdw")
-                break
-        if torch.rand(1).item() > 0.5:
-            cld_shdw = torch.flip(cld_shdw, dims=[1])
-        if torch.rand(1).item() > 0.5:
-            cld_shdw = torch.flip(cld_shdw, dims=[2])
-        if torch.rand(1).item() > 0.5:
-            cld_shdw = torch.rot90(cld_shdw, k=1, dims=[1, 2])
-        return cld_shdw
 
     @staticmethod
     def load_and_center_crop(fpath, channels=None, size=(256, 256)):

@@ -54,14 +54,23 @@ def download_metadata():
     filename = "metadata.tar.gz"
     url = f"{BASE_URL}/{filename}"
     dest_path = metadata_dir / filename
+    print(f"Downloading metadata from {url} to {dest_path}")
     success = download_file(url, dest_path)
 
     if success and verify_file(dest_path):
         # Extract the tar.gz file
         try:
             import tarfile
+            import shutil
+
             with tarfile.open(dest_path, 'r:gz') as tar:
-                tar.extractall(path=dest_path)
+                tar.extractall(path=metadata_dir)
+
+            nested_dir = metadata_dir / "metadata"
+            if nested_dir.exists() and nested_dir.is_dir():
+                for item in nested_dir.iterdir():
+                    shutil.move(str(item), str(metadata_dir))
+                nested_dir.rmdir()
             print(f"Successfully downloaded and extracted {filename}")
             # Remove the tar.gz file after extraction
             dest_path.unlink()
